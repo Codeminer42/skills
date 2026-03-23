@@ -6,7 +6,7 @@ A collection of [Agent Skills](https://agentskills.io) by [Codeminer42](https://
 
 | Skill | Description |
 |-------|-------------|
-| *No skills published yet. See [Contributing](./CONTRIBUTING.md) to add one.* | |
+| [sherlock](./sherlock/) | Autonomous investigation loop for finding and fixing performance issues, flaky tests, memory leaks, and reliability problems. |
 
 ## Installation
 
