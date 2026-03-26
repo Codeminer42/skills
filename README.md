@@ -7,6 +7,9 @@ A collection of [Agent Skills](https://agentskills.io) by [Codeminer42](https://
 | Skill | Description |
 |-------|-------------|
 | [sherlock](./sherlock/) | Autonomous investigation loop for finding and fixing performance issues, flaky tests, memory leaks, and reliability problems. |
+| [privacy-assessment-rails](./privacy-assessment-rails/) | Assess a Rails app's full codebase for compliance with privacy laws, like GDPR and LGPD. |
+| [privacy-by-design-rails](./privacy-by-design-rails/) | Privacy-by-design patterns for Rails features that handle personal data — encryption, consent flows, DSAR endpoints, anonymization, and compliance with privacy laws like GDPR and LGPD. |
+| [privacy-review-rails](./privacy-review-rails/) | Review uncommitted or recently changed files for privacy-by-design rule violations (based on privacy laws like GDPR and LGPD) before committing. |
 
 ## Installation
 
