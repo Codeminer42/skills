@@ -4,7 +4,7 @@ description: Use when building Rails features that handle personal data, adding 
 license: MIT
 metadata:
   author: talyssonoc
-  version: "1.0"
+  version: "1.0.1"
 user-invocable: false
 ---
 

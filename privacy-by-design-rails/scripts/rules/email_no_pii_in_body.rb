@@ -36,7 +36,7 @@ class EmailNoPiiInBody < BaseRule
 
     content.each_line.with_index(1) do |line, line_num|
       pii_accessors.each do |accessor|
-        if line.match?(/<%=.*\.#{accessor}\b/)
+        if line.match?(/=.*\.#{accessor}\b/)
           findings << finding(
             file: file_path,
             line: line_num,
