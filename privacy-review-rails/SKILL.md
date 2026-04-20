@@ -1,6 +1,6 @@
 ---
 name: privacy-review-rails
-description: Review uncommitted or recently changed files for privacy-by-design rule violations (based on privacy laws like GDPR and LGPD) before committing.
+description: "Review uncommitted or recently changed files for privacy-by-design rule violations before committing. Scans for PII exposure, missing encryption, improper logging of personal data, and consent gaps based on GDPR, LGPD, and data protection best practices. Use when running a pre-commit privacy check, reviewing data protection compliance, or verifying that new code handles personal data correctly."
 license: MIT
 metadata:
   author: talyssonoc

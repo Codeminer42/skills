@@ -1,6 +1,6 @@
 ---
 name: privacy-assessment-rails
-description: Assess a Rails app's full codebase for compliance with privacy laws, like GDPR and LGPD. Generates an assessment report, not a legal audit.
+description: "Assess a Rails application's full codebase for compliance with privacy regulations including GDPR, LGPD, and CCPA. Scans for personal data handling, reviews encryption and consent mechanisms, checks data retention policies, identifies third-party data sharing, and generates a prioritized assessment report. Use when performing a privacy audit, evaluating data protection readiness, reviewing PII handling, or preparing for compliance certification in a Rails app."
 license: MIT
 metadata:
   author: talyssonoc

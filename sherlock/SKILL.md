@@ -1,26 +1,11 @@
 ---
 name: sherlock
-description: |
-  Autonomous investigation loop for finding and fixing performance issues,
-  intermittent errors, flaky tests, memory leaks, slow operations, and
-  reliability problems. Inspired by Karpathy's autoresearch: makes a change,
-  measures the result, keeps or reverts, logs everything, and keeps going.
-  Run it and walk away - it works until interrupted or the codebase is healthy.
+description: "Autonomous investigation loop for finding and fixing performance issues, intermittent errors, flaky tests, memory leaks, slow operations, and reliability problems. Inspired by Karpathy's autoresearch: makes a change, measures the result, keeps or reverts, logs everything, and keeps going. Use when debugging flaky CI, diagnosing performance regressions, hunting memory leaks, fixing intermittent failures, or running an unattended fix-and-measure loop. Run it and walk away — it works until interrupted or the codebase is healthy."
 license: MIT
 metadata:
   author: geeksilva97
   version: "1.0"
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Grep
-  - Glob
-  - Bash
-  - Agent
-  - AskUserQuestion
-  - TaskCreate
-  - TaskUpdate
+allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Agent, AskUserQuestion, TaskCreate, TaskUpdate
 ---
 
 # Sherlock: Autonomous Performance & Reliability Doctor

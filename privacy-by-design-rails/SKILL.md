@@ -1,11 +1,10 @@
 ---
 name: privacy-by-design-rails
-description: Use when building Rails features that handle personal data, adding encryption to models, implementing consent flows, building DSAR endpoints, or adding anonymization/pseudonymization. Also use when reviewing code for compliance with privacy laws like GDPR and LGPD, or when asked about privacy-by-design patterns in Rails.
+description: "Implements privacy and data protection features in Rails applications, including encryption, consent management, DSAR handling, anonymization, and pseudonymization. Use when building Rails features that handle personal data, adding encryption to models, implementing consent flows, building DSAR endpoints, or adding anonymization/pseudonymization. Also use when reviewing code for compliance with privacy laws like GDPR and LGPD, or when asked about privacy-by-design patterns in Rails."
 license: MIT
 metadata:
   author: talyssonoc
   version: "1.0.1"
-user-invocable: false
 ---
 
 # Privacy by Design with Rails 8
@@ -13,7 +12,7 @@ user-invocable: false
 When generating or reviewing code that handles personal data, run the scanner first:
 `ruby .claude/skills/privacy-by-design-rails/scripts/scanner.rb --files <relevant files>`
 
-For deeper context on any topic, read the relevant reference file from `references/`.
+If findings are reported, fix each one using the patterns in the corresponding rule from `rules/`, then re-run the scanner to confirm they resolve. For deeper context on any topic, read the relevant reference file from `references/`.
 
 **What counts as PII?** Any data that can identify a person **directly or indirectly** (GDPR Art. 4, LGPD Art. 5, NIST SP 800-122). This includes data that isn't identifying alone but becomes PII when **linked** to a person — farm names, animal names with known owners, license plates, vehicle VINs, student IDs, property addresses, social media handles, company names of sole proprietors, device IDs linked to accounts, IP addresses. See `references/pii-definition.md` for the full definition and linkability test. **When in doubt, treat it as PII.**
 
