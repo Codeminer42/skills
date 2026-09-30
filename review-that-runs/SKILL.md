@@ -134,4 +134,4 @@ whole anchored range when someone clicks Apply. When posted, the review goes out
 
 When the notes are posted, the review body ends with this line, verbatim:
 
-> *First pass by review-that-runs. Approving is a human's call.*
+> *First pass by [review-that-runs](https://github.com/Codeminer42/skills/tree/main/review-that-runs). Approving is a human's call.*
