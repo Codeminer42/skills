@@ -86,6 +86,20 @@ Then verify the skill activates on relevant prompts and produces the expected be
 - [ ] Any scripts are self-contained and include error handling.
 - [ ] No secrets, credentials, or internal-only URLs are included.
 
+### Evals
+
+A skill can ship an `evals/` suite for [`claude plugin eval`](https://code.claude.com/docs/en/plugin-evals): realistic prompts, the fixtures they need, and graders that check what the agent did. `review-that-runs/evals/` is the worked example.
+
+When a skill has one, a maintainer adds the `run-evals` label to a PR that changes it. CI then runs the suite against the skill on `main` and against the PR's version, and fails when the PR's version scores worse.
+
+The suite always comes from `main`. A PR that changes the skill's behaviour on purpose updates the affected cases in a separate PR first, so the graders are reviewed on their own.
+
+When writing cases:
+
+- **Plant exactly one known problem per case, or none.** Cases with nothing wrong catch reviews that invent bugs.
+- **Prefer free graders** (`tool_used`, `regex`, `file_exists`) and keep `llm` graders for judgements a pattern can't make.
+- **Never copy client code into a fixture.** Re-implement the shape of the bug in a neutral domain.
+
 ## Submitting a Pull Request
 
 1. Create a branch: `git checkout -b add-skill/my-skill-name`
