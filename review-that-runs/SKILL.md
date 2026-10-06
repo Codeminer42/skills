@@ -22,7 +22,7 @@ https://github.com/mcollina/skills). The difference: this one executes.
 1. **Verify before you claim.** Anything you cannot prove against the code on the
    branch does not become a comment. A killed false positive is the system working.
 2. **Never touch the user's working tree.** Fetch the PR and `git worktree add --detach`
-   into a scratch directory. Remove it when you are done.
+   into `<state>/<pr|mr|change>-<N>/worktree/` (see Output template), never inside the repo. Remove it when you are done.
 3. **Nothing reaches the code host.** No `gh pr review`, `glab mr note`, `az repos pr` comment etc. The deliverable is the notes file. Posting it is the user's call.
 4. **Detect, don't assume.** Forge, language, package manager and gates come from the repository, never from habit. A guessed `npm test` that fails in a Ruby repo gets blamed on the PR.
 5. **Frontend changes get run in Chrome.** The real app, styled, built from the PR's own
@@ -87,8 +87,7 @@ Diff against the merge base (`git diff <base>...<head>`, three dots). Two dots a
 
 Toolchain pins to copy: `.tool-versions`, `mise.toml`, `.nvmrc`, `.node-version`, `.ruby-version`, `.python-version`, `rust-toolchain.toml`, `global.json`, the `packageManager` field. A CI step that needs secrets or deploy access does not run locally: list it under what could not be checked. Monorepo (`pnpm-workspace.yaml`, `turbo.json`, `nx.json`, Cargo or Go workspaces): run the gates for the changed packages and their dependents.
 
-Write the profile as the first line of the validation run, e.g. "GitLab MR, Rails 7 +
-Hotwire, Ruby 3.3, gates from `.gitlab-ci.yml`: rspec, rubocop, brakeman."
+Save the profile to `<state>/profile.md` (see Output template) with the head SHA it was built from. Reuse it on the next review unless a lockfile, toolchain pin or CI file changed since that SHA. Copy it as the first line of the validation run, e.g. "GitLab MR, Rails 7 + Hotwire, Ruby 3.3, gates from `.gitlab-ci.yml`: rspec, rubocop, brakeman."
 
 ## Running the PR
 
@@ -125,7 +124,7 @@ Open each comment with its severity as a plain sentence:
 
 ## Output template
 
-Write `<repo-root>/<pr|mr|change>-<N>-review-notes.md`, using the forge's term:
+Write the notes to `<state>/<pr|mr|change>-<N>/review-notes.md`, using the forge's term, where `<state>` is `${XDG_STATE_HOME:-$HOME/.local/state}/review-that-runs/<host>/<path>`, the host and path of the `origin` URL without `.git` (a local remote has no host: use its path alone). Nothing the review writes goes inside the reviewed repo; tell the user the notes path at the end:
 
 ```markdown
 # <PR|MR|Change> #<N> review notes (<forge>)
