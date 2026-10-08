@@ -1,10 +1,10 @@
 ---
 name: review-that-runs
-description: Review a pull request by running it, not just reading it. Detects the project's forge (GitHub, GitLab, Bitbucket, Azure DevOps, Gerrit, plain git) and stack, checks out the change in an isolated worktree, runs the project's own CI gates, drives the app in Chrome for frontend changes, verifies every finding before writing it, and writes the review to a local notes file with one proof line per finding. Posts nothing to the code host. Use when asked to review a PR, MR, change or branch, locally or before posting.
+description: Review a pull request by running it, not just reading it. Detects the project's forge (GitHub, GitLab, Bitbucket, Azure DevOps, Gerrit, plain git) and stack, checks out the change in an isolated worktree, runs the project's own CI gates, drives the app in Chrome for frontend changes, verifies every finding before writing it, and writes the review to a local notes file with one proof line per finding, then removes the worktree and every container it started. Posts nothing to the code host. Use when asked to review a PR, MR, change or branch, locally or before posting.
 license: MIT
 metadata:
   author: geeksilva97
-  version: "1.1"
+  version: "1.2"
 ---
 
 # Review that runs
@@ -22,7 +22,7 @@ https://github.com/mcollina/skills). The difference: this one executes.
 1. **Verify before you claim.** Anything you cannot prove against the code on the
    branch does not become a comment. A killed false positive is the system working.
 2. **Never touch the user's working tree.** Fetch the PR and `git worktree add --detach`
-   into `<state>/<pr|mr|change>-<N>/worktree/` (see Output template), never inside the repo. Remove it when you are done.
+   into `<state>/<pr|mr|change>-<N>/worktree/` (see Output template), never inside the repo.
 3. **Nothing reaches the code host.** No `gh pr review`, `glab mr note`, `az repos pr` comment etc. The deliverable is the notes file. Posting it is the user's call.
 4. **Detect, don't assume.** Forge, language, package manager and gates come from the repository, never from habit. A guessed `npm test` that fails in a Ruby repo gets blamed on the PR.
 5. **Frontend changes get run in Chrome.** The real app, styled, built from the PR's own
@@ -34,6 +34,10 @@ https://github.com/mcollina/skills). The difference: this one executes.
 7. **Mark what you changed to make it run.** Any edit to mocks, fixtures or env to boot
    the app carries a `// REVIEW SCRATCH: not part of the PR` comment, and the overview
    names it, so mock behaviour is never read as the PR's.
+8. **Leave nothing running.** The worktree, every container, volume, network, dev server
+   and Chrome page the review started is torn down before the notes path is reported,
+   also when the review is aborted or fails halfway (see Cleaning up). Only the notes
+   file and the profile survive a review.
 
 ## Flow
 
@@ -53,6 +57,7 @@ Track progress in a todo list with exactly these steps, in order:
 9. **Write**: fill the template.
 10. **Tighten**: cut filler, restated findings and praise adjectives.
 11. **Check anchors**: every anchor must land on a line the PR diff shows.
+12. **Clean up**: tear down everything the review started (below), then report the notes path.
 
 ## Detecting the project
 
@@ -98,6 +103,43 @@ Save the profile to `<state>/profile.md` (see Output template) with the head SHA
 - No backend? Use the project's own mock layer (MSW handlers, fixtures, cassettes,
   factories) instead of starting services against the user's local database. Compose
   stacks run under their own project name (`-p review-<N>`) and ports, or not at all. Seed what the changed flow needs, and mark it (rule 7).
+- Name everything you start after the review, so the cleanup can find it without guessing:
+  compose with `-p review-<N>`, `docker run` with `--name review-<N>-<service>` and
+  `--label review-that-runs=<N>`, test databases and schemas as `review_<N>`. Never reuse a
+  container, volume or database the user already has.
+- Anything not in Docker (dev server, test runner, watcher, tunnel) starts in its own
+  process group and is written to `<state>/<pr|mr|change>-<N>/pids` the moment it is up:
+  one line per process, `<pgid> <port or -> <command>`. Memory of what was started does
+  not survive a crashed or interrupted session; the file does.
+
+  ```sh
+  setsid pnpm dev --port 4173 > "$STATE/pr-<N>/dev-server.log" 2>&1 &
+  echo "$! 4173 pnpm dev --port 4173" >> "$STATE/pr-<N>/pids"
+  ```
+
+## Cleaning up
+
+Runs as the last step, and also when the review aborts, errors out or is interrupted by the
+user: do the teardown first, then explain what went wrong. Nothing waits for the user to
+ask.
+
+| Started | Teardown |
+|---|---|
+| Worktree | `git -C <repo> worktree remove --force <state>/<pr\|mr\|change>-<N>/worktree`, then `git -C <repo> worktree prune` |
+| Compose stack | `docker compose -p review-<N> down --volumes --remove-orphans` |
+| Standalone containers | `docker rm -f $(docker ps -aq --filter label=review-that-runs=<N>)`, then the same `docker volume ls` / `docker network ls` filter |
+| Dev server, test runner, watcher | For each line in `<state>/<pr\|mr\|change>-<N>/pids`: `kill -TERM -- -<pgid>`, `kill -KILL` after a few seconds if still alive; then `lsof -i :<port>` for every port listed, kill anything left, and delete the file |
+| Chrome pages | `close_page` on every page the review opened; leave the user's tabs alone |
+| Test database or schema | Drop `review_<N>` on the service the review itself started; never on the user's |
+| Installed toolchains, caches, `node_modules` | Live inside the worktree and go with it; nothing is installed globally for a review |
+
+Keep the notes file and `<state>/profile.md`. Then check: `git -C <repo> worktree list`
+shows only the user's worktrees, `docker ps -a --filter label=review-that-runs=<N>` and
+`docker compose -p review-<N> ps` are empty, the `pids` file is gone and every port it
+listed is free. A `pids` file found at the start of a review is a previous run that did
+not get this far: tear it down first. If a
+teardown step fails, the validation run names what was left and the exact command to
+remove it.
 
 ## Frontend validation with Chrome DevTools MCP
 
@@ -137,8 +179,9 @@ Write the notes to `<state>/<pr|mr|change>-<N>/review-notes.md`, using the forge
 
 ## Validation run
 
-<The project profile. Then one line per pass that actually ran, and one line for what
-could not be checked and why.>
+<The project profile. Then one line per pass that actually ran, one line for what
+could not be checked and why, and one line naming what was torn down, or what was left
+behind and the command that removes it.>
 
 ## Comments
 
