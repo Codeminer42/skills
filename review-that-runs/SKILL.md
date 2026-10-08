@@ -107,6 +107,15 @@ Save the profile to `<state>/profile.md` (see Output template) with the head SHA
   compose with `-p review-<N>`, `docker run` with `--name review-<N>-<service>` and
   `--label review-that-runs=<N>`, test databases and schemas as `review_<N>`. Never reuse a
   container, volume or database the user already has.
+- Anything not in Docker (dev server, test runner, watcher, tunnel) starts in its own
+  process group and is written to `<state>/<pr|mr|change>-<N>/pids` the moment it is up:
+  one line per process, `<pgid> <port or -> <command>`. Memory of what was started does
+  not survive a crashed or interrupted session; the file does.
+
+  ```sh
+  setsid pnpm dev --port 4173 > "$STATE/pr-<N>/dev-server.log" 2>&1 &
+  echo "$! 4173 pnpm dev --port 4173" >> "$STATE/pr-<N>/pids"
+  ```
 
 ## Cleaning up
 
@@ -119,14 +128,16 @@ ask.
 | Worktree | `git -C <repo> worktree remove --force <state>/<pr\|mr\|change>-<N>/worktree`, then `git -C <repo> worktree prune` |
 | Compose stack | `docker compose -p review-<N> down --volumes --remove-orphans` |
 | Standalone containers | `docker rm -f $(docker ps -aq --filter label=review-that-runs=<N>)`, then the same `docker volume ls` / `docker network ls` filter |
-| Dev server, test runner, watcher | Kill the process group you started; confirm the port is free (`lsof -i :<port>`) |
+| Dev server, test runner, watcher | For each line in `<state>/<pr\|mr\|change>-<N>/pids`: `kill -TERM -- -<pgid>`, `kill -KILL` after a few seconds if still alive; then `lsof -i :<port>` for every port listed, kill anything left, and delete the file |
 | Chrome pages | `close_page` on every page the review opened; leave the user's tabs alone |
 | Test database or schema | Drop `review_<N>` on the service the review itself started; never on the user's |
 | Installed toolchains, caches, `node_modules` | Live inside the worktree and go with it; nothing is installed globally for a review |
 
 Keep the notes file and `<state>/profile.md`. Then check: `git -C <repo> worktree list`
 shows only the user's worktrees, `docker ps -a --filter label=review-that-runs=<N>` and
-`docker compose -p review-<N> ps` are empty, and the ports you served on are free. If a
+`docker compose -p review-<N> ps` are empty, the `pids` file is gone and every port it
+listed is free. A `pids` file found at the start of a review is a previous run that did
+not get this far: tear it down first. If a
 teardown step fails, the validation run names what was left and the exact command to
 remove it.
 
