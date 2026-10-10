@@ -29,3 +29,6 @@ node_modules/
 # Misc
 *.log
 *.tmp
+
+# claude plugin eval output
+*/evals/results/
