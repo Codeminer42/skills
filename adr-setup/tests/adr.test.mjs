@@ -1,7 +1,8 @@
-// Runs every case against both checkers the skill installs, adr.mjs and
-// adr.sh, so the two keep reporting the same thing in the same words.
+// Installs adr.sh into throwaway repositories and runs it, the way the skill
+// and CI do. Node is only the test runner; the checker needs bash, git and awk.
 //
 //   node --test adr-setup/tests/adr.test.mjs
+//   ADR_TEST_BASH=/bin/bash node --test adr-setup/tests/adr.test.mjs
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
@@ -21,35 +22,14 @@ import { fileURLToPath } from 'node:url';
 const assets = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets');
 const asset = (name) => readFileSync(join(assets, name), 'utf8');
 
-const CHECKERS = [
-  {
-    name: 'adr.mjs',
-    file: 'scripts/adr.mjs',
-    run: (root, args) =>
-      spawnSync('node', ['scripts/adr.mjs', ...args], {
-        cwd: root,
-        encoding: 'utf8',
-        env: environment(),
-      }),
-    dirs: (source, dirs) =>
-      source.replace(
-        /^const ADR_DIRS = .*$/m,
-        `const ADR_DIRS = [${dirs.map((dir) => `'${dir}'`).join(', ')}];`,
-      ),
-  },
-  {
-    name: 'adr.sh',
-    file: 'scripts/adr.sh',
-    run: (root, args) =>
-      spawnSync(
-        process.env.ADR_TEST_BASH ?? 'bash',
-        ['scripts/adr.sh', ...args],
-        { cwd: root, encoding: 'utf8', env: environment() },
-      ),
-    dirs: (source, dirs) =>
-      source.replace(/^ADR_DIRS=.*$/m, `ADR_DIRS=(${dirs.join(' ')})`),
-  },
-];
+const BASH = process.env.ADR_TEST_BASH ?? 'bash';
+
+const adr = (root, args, env = environment()) =>
+  spawnSync(BASH, ['scripts/adr.sh', ...args], {
+    cwd: root,
+    encoding: 'utf8',
+    env,
+  });
 
 function environment() {
   const env = { ...process.env };
@@ -97,16 +77,17 @@ function write(root, files) {
   }
 }
 
-function repository(checker, files = {}, { dirs, fix = true } = {}) {
+function repository(files = {}, { dirs, fix = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'adr-'));
   roots.push(root);
   write(root, { ...baseline(), ...files });
-  const source = readFileSync(
-    join(assets, checker.file.replace('scripts/', '')),
-    'utf8',
-  );
-  write(root, { [checker.file]: dirs ? checker.dirs(source, dirs) : source });
-  if (fix) checker.run(root, ['--fix']);
+  const source = asset('adr.sh');
+  write(root, {
+    'scripts/adr.sh': dirs
+      ? source.replace(/^ADR_DIRS=.*$/m, `ADR_DIRS=(${dirs.join(' ')})`)
+      : source,
+  });
+  if (fix) adr(root, ['--fix']);
   return root;
 }
 
@@ -125,14 +106,10 @@ function commit(root) {
   return git(root, 'rev-parse', 'HEAD').trim();
 }
 
-const normalize = (line) =>
-  line.replace(
-    /node scripts\/adr\.mjs|scripts\/adr\.mjs|scripts\/adr\.sh/g,
-    '<script>',
-  );
+const normalize = (line) => line.replace(/scripts\/adr\.sh/g, '<script>');
 
-function run(checker, root, ...args) {
-  const result = checker.run(root, args);
+function run(root, ...args) {
+  const result = adr(root, args);
   const lines = result.stderr.split('\n');
   return {
     status: result.status,
@@ -162,12 +139,12 @@ function fails(result, ...expected) {
   assert.equal(result.status, 1);
 }
 
-for (const checker of CHECKERS) {
-  describe(checker.name, () => {
+{
+  describe('adr.sh', () => {
     describe('records', () => {
       it('passes the files the skill installs, once the index is generated', () => {
-        const root = repository(checker);
-        const result = run(checker, root);
+        const root = repository();
+        const result = run(root);
         passes(result);
         assert.deepEqual(result.warnings, []);
         assert.match(
@@ -177,13 +154,13 @@ for (const checker of CHECKERS) {
       });
 
       it('fails a file not named YYYYMMDDHHMM-<decision-slug>.md, or with a date that is not one', () => {
-        const root = repository(checker, {
+        const root = repository({
           'docs/adr/0001-use-postgres.md': record('Use Postgres'),
           'docs/adr/202613011200-use-redis.md': record('Use Redis'),
           'docs/adr/202610161200-Use-Kafka.md': record('Use Kafka'),
         });
         fails(
-          run(checker, root),
+          run(root),
           'docs/adr/0001-use-postgres.md: a record is named YYYYMMDDHHMM-<decision-slug>.md',
           'docs/adr/202613011200-use-redis.md: a record is named YYYYMMDDHHMM-<decision-slug>.md',
           'docs/adr/202610161200-Use-Kafka.md: a record is named YYYYMMDDHHMM-<decision-slug>.md',
@@ -191,33 +168,33 @@ for (const checker of CHECKERS) {
       });
 
       it('fails a record without a heading, or with the template placeholder left in it', () => {
-        const root = repository(checker, {
+        const root = repository({
           'docs/adr/202610161300-use-postgres.md': record(
             'Use Postgres',
           ).replace('# Use Postgres\n', 'Use Postgres\n'),
           'docs/adr/202610161301-use-redis.md': record('{{Decision title}}'),
         });
         fails(
-          run(checker, root),
+          run(root),
           'docs/adr/202610161300-use-postgres.md: has no "# <decision title>" heading',
           "docs/adr/202610161301-use-redis.md: the heading is still the template's placeholder",
         );
       });
 
       it('fails a record missing one of the template sections', () => {
-        const root = repository(checker, {
+        const root = repository({
           'docs/adr/202610161300-use-postgres.md': record(
             'Use Postgres',
           ).replace('## Consequences', '## Outcome'),
         });
         fails(
-          run(checker, root),
+          run(root),
           'docs/adr/202610161300-use-postgres.md: has no "## Consequences" section',
         );
       });
 
       it('fails an empty status and one outside the list', () => {
-        const root = repository(checker, {
+        const root = repository({
           'docs/adr/202610161300-use-postgres.md': record(
             'Use Postgres',
             '<!-- Proposed | Accepted -->',
@@ -226,7 +203,7 @@ for (const checker of CHECKERS) {
           'docs/adr/202610161302-use-kafka.md': record('Use Kafka', 'accepted'),
         });
         fails(
-          run(checker, root),
+          run(root),
           'docs/adr/202610161300-use-postgres.md: the Status section is empty',
           'docs/adr/202610161301-use-redis.md: status "Approved" is not Proposed, Accepted, Rejected, Deprecated, or Superseded by [title](./file.md)',
           'docs/adr/202610161302-use-kafka.md: status "accepted" is not Proposed, Accepted, Rejected, Deprecated, or Superseded by [title](./file.md)',
@@ -234,25 +211,25 @@ for (const checker of CHECKERS) {
       });
 
       it('reads the status past the template comment, across lines', () => {
-        const root = repository(checker, {
+        const root = repository({
           'docs/adr/202610161300-use-postgres.md': record(
             'Use Postgres',
             '<!--\nProposed | Accepted\n-->\n\nSuperseded by\n[Use CockroachDB](./202610161400-use-cockroachdb.md)',
           ),
           'docs/adr/202610161400-use-cockroachdb.md': record('Use CockroachDB'),
         });
-        passes(run(checker, root));
+        passes(run(root));
       });
 
       it('passes a superseded record and indexes it with a link to the record that replaced it', () => {
-        const root = repository(checker, {
+        const root = repository({
           'docs/adr/202610161300-use-postgres.md': record(
             'Use Postgres',
             'Superseded by [Use CockroachDB](./202610161400-use-cockroachdb.md)',
           ),
           'docs/adr/202610161400-use-cockroachdb.md': record('Use CockroachDB'),
         });
-        passes(run(checker, root));
+        passes(run(root));
         assert.ok(
           readFileSync(join(root, 'docs/adr/README.md'), 'utf8').includes(
             '| 2026-10-16 | [Use Postgres](./202610161300-use-postgres.md) | Superseded by [Use CockroachDB](./202610161400-use-cockroachdb.md) |',
@@ -261,7 +238,7 @@ for (const checker of CHECKERS) {
       });
 
       it('fails a supersession by a record that is missing, itself, older, or not in effect', () => {
-        const root = repository(checker, {
+        const root = repository({
           'docs/adr/202610161300-use-postgres.md': record(
             'Use Postgres',
             'Superseded by [Use X](./202610161900-use-x.md)',
@@ -284,7 +261,7 @@ for (const checker of CHECKERS) {
           ),
         });
         fails(
-          run(checker, root),
+          run(root),
           'docs/adr/202610161300-use-postgres.md: superseded by 202610161900-use-x.md, which is not a record in this folder',
           'docs/adr/202610161301-use-redis.md: superseded by itself',
           'docs/adr/202610161302-use-kafka.md: superseded by 202610161300-use-postgres.md, which is older',
@@ -296,38 +273,36 @@ for (const checker of CHECKERS) {
     describe('folders', () => {
       it('fails a folder that is missing, and one with no records rather than passing on nothing', () => {
         const root = repository(
-          checker,
           { 'apps/web/docs/adr/README.md': asset('README.md') },
           { dirs: ['docs/adr', 'apps/web/docs/adr', 'apps/api/docs/adr'] },
         );
         fails(
-          run(checker, root),
+          run(root),
           'apps/web/docs/adr: holds no records; the check would pass on nothing',
           'apps/api/docs/adr: is in ADR_DIRS but does not exist',
         );
       });
 
       it('fails a folder of records the check does not read', () => {
-        const root = repository(checker, {
+        const root = repository({
           'packages/api/docs/decisions/202610161300-use-postgres.md':
             record('Use Postgres'),
         });
         fails(
-          run(checker, root),
+          run(root),
           'packages/api/docs/decisions: holds records the check does not read; add it to ADR_DIRS in <script>',
         );
       });
 
       it('reads every folder in ADR_DIRS', () => {
         const root = repository(
-          checker,
           {
             'apps/web/docs/adr/README.md': asset('README.md'),
             'apps/web/docs/adr/202610161300-use-react.md': record('Use React'),
           },
           { dirs: ['docs/adr', 'apps/web/docs/adr'] },
         );
-        const result = run(checker, root);
+        const result = run(root);
         passes(result);
         assert.match(result.stdout, /^adr: 2 records in 2 folder\(s\)/m);
       });
@@ -335,7 +310,7 @@ for (const checker of CHECKERS) {
 
     describe('index', () => {
       it('generates the index from the files, oldest first, and leaves the rest of the README alone', () => {
-        const root = repository(checker, {
+        const root = repository({
           'docs/adr/202610151200-use-postgres.md': record(
             'Use Postgres | 16',
             'Proposed',
@@ -355,9 +330,9 @@ for (const checker of CHECKERS) {
       });
 
       it('is idempotent', () => {
-        const root = repository(checker);
+        const root = repository();
         const before = readFileSync(join(root, 'docs/adr/README.md'), 'utf8');
-        checker.run(root, ['--fix']);
+        adr(root, ['--fix']);
         assert.equal(
           readFileSync(join(root, 'docs/adr/README.md'), 'utf8'),
           before,
@@ -365,7 +340,7 @@ for (const checker of CHECKERS) {
       });
 
       it('accepts a hand-aligned table that says the same thing', () => {
-        const root = repository(checker);
+        const root = repository();
         const path = join(root, 'docs/adr/README.md');
         write(root, {
           'docs/adr/README.md': readFileSync(path, 'utf8').replace(
@@ -373,11 +348,11 @@ for (const checker of CHECKERS) {
             '| Date       | Decision                                                                                             | Status   |\n|:-----------|:-----------------------------------------------------------------------------------------------------|:---------|\n|  2026-10-16  |   [Record architecture decisions with ADRs](./202610161200-record-architecture-decisions-with-adrs.md)   |  Accepted  |',
           ),
         });
-        passes(run(checker, root));
+        passes(run(root));
       });
 
       it('fails a stale row, a missing row, a row for no record, and rows out of order', () => {
-        const root = repository(checker, {
+        const root = repository({
           'docs/adr/202610161300-use-postgres.md': record('Use Postgres'),
           'docs/adr/202610161400-use-redis.md': record('Use Redis'),
         });
@@ -394,13 +369,13 @@ for (const checker of CHECKERS) {
             ),
         });
         fails(
-          run(checker, root),
+          run(root),
           'docs/adr/README.md: the index row for 202610161300-use-postgres.md reads "2026-10-16 | [Use Postgres](./202610161300-use-postgres.md) | Proposed", the record says "2026-10-16 | [Use Postgres](./202610161300-use-postgres.md) | Accepted"; run <script> --fix',
           'docs/adr/README.md: the index has no row for 202610161400-use-redis.md; run <script> --fix',
           'docs/adr/README.md: the index lists 202610161350-use-kafka.md, which is not a record; run <script> --fix',
         );
 
-        checker.run(root, ['--fix']);
+        adr(root, ['--fix']);
         const rows = readFileSync(
           join(root, 'docs/adr/README.md'),
           'utf8',
@@ -411,14 +386,13 @@ for (const checker of CHECKERS) {
         [rows[at], rows[at + 1]] = [rows[at + 1], rows[at]];
         write(root, { 'docs/adr/README.md': rows.join('\n') });
         fails(
-          run(checker, root),
+          run(root),
           'docs/adr/README.md: the index rows are out of order, oldest first; run <script> --fix',
         );
       });
 
       it('fails a README with no index, and writes one under the Index heading or at the end', () => {
         const root = repository(
-          checker,
           {
             'docs/adr/README.md':
               '# Decisions\n\n## Index\n\nEvery record.\n\n## Elsewhere\n\nMore.\n',
@@ -426,10 +400,10 @@ for (const checker of CHECKERS) {
           { fix: false },
         );
         fails(
-          run(checker, root),
+          run(root),
           'docs/adr/README.md: the Index section has no table; run <script> --fix',
         );
-        checker.run(root, ['--fix']);
+        adr(root, ['--fix']);
         assert.equal(
           readFileSync(join(root, 'docs/adr/README.md'), 'utf8'),
           '# Decisions\n\n## Index\n\nEvery record.\n\n| Date | Decision | Status |\n| --- | --- | --- |\n| 2026-10-16 | [Record architecture decisions with ADRs](./202610161200-record-architecture-decisions-with-adrs.md) | Accepted |\n\n## Elsewhere\n\nMore.\n',
@@ -439,32 +413,29 @@ for (const checker of CHECKERS) {
           'docs/adr/README.md': '# Decisions\n\nEvery record.\n\n',
         });
         fails(
-          run(checker, root),
+          run(root),
           'docs/adr/README.md: has no "## Index" section; run <script> --fix',
         );
-        checker.run(root, ['--fix']);
+        adr(root, ['--fix']);
         assert.equal(
           readFileSync(join(root, 'docs/adr/README.md'), 'utf8'),
           '# Decisions\n\nEvery record.\n\n## Index\n\n| Date | Decision | Status |\n| --- | --- | --- |\n| 2026-10-16 | [Record architecture decisions with ADRs](./202610161200-record-architecture-decisions-with-adrs.md) | Accepted |\n',
         );
-        passes(run(checker, root));
+        passes(run(root));
       });
 
       it('fails a missing README', () => {
-        const root = repository(checker, {
+        const root = repository({
           'docs/adr/README.md': null,
           'README.md': '# Project\n',
         });
-        fails(
-          run(checker, root),
-          'docs/adr/README.md: is missing; it holds the index',
-        );
+        fails(run(root), 'docs/adr/README.md: is missing; it holds the index');
       });
     });
 
     describe('links', () => {
       it('fails a relative link that does not resolve, in every file agents read', () => {
-        const root = repository(checker, {
+        const root = repository({
           'AGENTS.md': '# Agents\n\nRead [the guide](docs/guide.md).\n',
           'apps/web/CLAUDE.md':
             '# Web\n\nSee [testing](./docs/testing.md#mocks).\n',
@@ -479,7 +450,7 @@ for (const checker of CHECKERS) {
           ),
         });
         fails(
-          run(checker, root),
+          run(root),
           'AGENTS.md: links to docs/guide.md, which does not exist',
           'apps/web/CLAUDE.md: links to ./docs/testing.md#mocks, which does not exist',
           '.claude/skills/deploy/SKILL.md: links to ../../../docs/runbook.md, which does not exist',
@@ -490,7 +461,7 @@ for (const checker of CHECKERS) {
       });
 
       it('passes links that resolve, from the root too, and ignores URLs, anchors, footnotes, comments and code', () => {
-        const root = repository(checker, {
+        const root = repository({
           'docs/guide.md': '# Guide\n',
           'AGENTS.md': [
             '# Agents',
@@ -509,16 +480,16 @@ for (const checker of CHECKERS) {
             '',
           ].join('\n'),
         });
-        const result = run(checker, root);
+        const result = run(root);
         passes(result);
         assert.match(result.stdout, /, 6 links,/);
       });
 
       it('does not read links in files agents are not pointed at', () => {
-        const root = repository(checker, {
+        const root = repository({
           'docs/notes.md': '[gone](./gone.md)\n',
         });
-        passes(run(checker, root));
+        passes(run(root));
       });
     });
 
@@ -541,27 +512,27 @@ for (const checker of CHECKERS) {
       };
 
       it('passes a citation of a record that stands, in code or docs', () => {
-        const root = repository(checker, {
+        const root = repository({
           ...superseded,
           'src/db.ts':
             '// Kept on CockroachDB: docs/adr/202610161400-use-cockroachdb.md\nexport const db = 1;\n',
           'docs/ops.md': 'We run `202610161400-use-cockroachdb`.\n',
         });
-        const result = run(checker, root);
+        const result = run(root);
         passes(result);
         assert.deepEqual(result.warnings, []);
         assert.match(result.stdout, /, 10 citations$/m);
       });
 
       it('fails a citation that names no record, and one by number', () => {
-        const root = repository(checker, {
+        const root = repository({
           'src/db.rb': '# see 202610161300-use-postgresql\nDB = 1\n',
           'lib/cache.go':
             'package cache\n\n// ADR-3 says so, and so does ADR 0012.\n',
           'docs/ops.md': 'Per ADR#7.\n',
         });
         fails(
-          run(checker, root),
+          run(root),
           'src/db.rb:1: cites 202610161300-use-postgresql, which is not a record',
           "lib/cache.go:3: cites ADR-3, but records are named by timestamp, not number; cite the record's file name",
           "lib/cache.go:3: cites ADR 0012, but records are named by timestamp, not number; cite the record's file name",
@@ -570,12 +541,12 @@ for (const checker of CHECKERS) {
       });
 
       it('warns on a citation of a superseded or deprecated record outside the records, and does not fail it', () => {
-        const root = repository(checker, {
+        const root = repository({
           ...superseded,
           'src/db.py': 'import os\n# 202610161300-use-postgres\n',
           'src/cache.py': '# 202610161500-use-memcached.md\n',
         });
-        const result = run(checker, root);
+        const result = run(root);
         passes(result);
         assert.deepEqual(result.warnings.sort(), [
           'src/cache.py:1: cites 202610161500-use-memcached, which is deprecated; drop the reference, or cite what replaced it',
@@ -584,37 +555,37 @@ for (const checker of CHECKERS) {
       });
 
       it('ignores names inside longer tokens', () => {
-        const root = repository(checker, {
+        const root = repository({
           'db/migrate/20261016120000_create_users.rb':
             'class CreateUsers; end\n',
           'src/ids.ts':
             'const a = "x202610161300-use-thing";\nconst b = "202610161300-use-thing_v2";\nconst c = "NOTADR-3";\n',
         });
-        passes(run(checker, root));
+        passes(run(root));
       });
 
       it('skips dependencies and lockfiles', () => {
-        const root = repository(checker, {
+        const root = repository({
           'node_modules/pkg/index.js': '// 202610161300-use-nothing\n',
           'vendor/lib/a.rb': '# ADR-1\n',
           'yarn.lock': 'ADR-1\n',
         });
-        passes(run(checker, root));
+        passes(run(root));
       });
 
       it('skips files git ignores', () => {
-        const root = repository(checker, {
+        const root = repository({
           '.gitignore': 'tmp/\n',
           'tmp/notes.txt': 'ADR-1\n',
         });
         commit(root);
         write(root, { 'scratch.txt': 'ADR-2\n' });
         fails(
-          run(checker, root),
+          run(root),
           "scratch.txt:1: cites ADR-2, but records are named by timestamp, not number; cite the record's file name",
         );
         assert.ok(
-          !run(checker, root).violations.some((violation) =>
+          !run(root).violations.some((violation) =>
             violation.startsWith('tmp/'),
           ),
         );
@@ -623,8 +594,8 @@ for (const checker of CHECKERS) {
 
     describe('new', () => {
       it('creates a record from the template, named by timestamp and slug, and indexes it', () => {
-        const root = repository(checker);
-        const result = checker.run(root, ['new', "Don't", 'use', 'Café ORM']);
+        const root = repository();
+        const result = adr(root, ['new', "Don't", 'use', 'Café ORM']);
         assert.equal(result.status, 0, result.stderr);
         const file = readdirSync(join(root, 'docs/adr')).find((name) =>
           name.endsWith('-dont-use-cafe-orm.md'),
@@ -644,15 +615,15 @@ for (const checker of CHECKERS) {
             `| [Don't use Café ORM](./${file}) | Proposed |`,
           ),
         );
-        passes(run(checker, root));
+        passes(run(root));
       });
 
       it('prints usage without a title, and refuses a title with nothing to slug', () => {
-        const root = repository(checker);
-        const usage = checker.run(root, ['new']);
+        const root = repository();
+        const usage = adr(root, ['new']);
         assert.equal(usage.status, 0);
         assert.match(usage.stdout, /^usage: /);
-        const empty = checker.run(root, ['new', '???']);
+        const empty = adr(root, ['new', '???']);
         assert.equal(empty.status, 1);
         assert.match(empty.stderr, /the title has no letters or digits/);
       });
@@ -660,7 +631,7 @@ for (const checker of CHECKERS) {
 
     describe('history', () => {
       function merged(files = {}) {
-        const root = repository(checker, {
+        const root = repository({
           'docs/adr/202610161300-use-postgres.md': record(
             'Use Postgres',
             'Proposed',
@@ -681,8 +652,8 @@ for (const checker of CHECKERS) {
         write(root, {
           'docs/adr/202610161600-use-nats.md': record('Use NATS', 'Proposed'),
         });
-        checker.run(root, ['--fix']);
-        passes(run(checker, root, '--base', base));
+        adr(root, ['--fix']);
+        passes(run(root, '--base', base));
       });
 
       it('allows a status to move forward, and the index with it', () => {
@@ -693,8 +664,8 @@ for (const checker of CHECKERS) {
             '<!-- agreed on 2026-10-17 -->\nAccepted',
           ),
         });
-        checker.run(root, ['--fix']);
-        passes(run(checker, root, '--base', base));
+        adr(root, ['--fix']);
+        passes(run(root, '--base', base));
       });
 
       it('fails an edit outside the Status section', () => {
@@ -707,7 +678,7 @@ for (const checker of CHECKERS) {
           ),
         });
         fails(
-          run(checker, root, '--base', base),
+          run(root, '--base', base),
           'docs/adr/202610161400-use-redis.md: a merged record changes only in its Status section; write a new record that supersedes it',
         );
       });
@@ -718,9 +689,9 @@ for (const checker of CHECKERS) {
           'docs/adr/202610161400-use-redis.md': record('Use Redis', 'Proposed'),
           'docs/adr/202610161350-use-kafka.md': record('Use Kafka', 'Accepted'),
         });
-        checker.run(root, ['--fix']);
+        adr(root, ['--fix']);
         fails(
-          run(checker, root, '--base', base),
+          run(root, '--base', base),
           'docs/adr/202610161400-use-redis.md: a merged record does not go from Accepted to Proposed; from Accepted it goes to Deprecated or Superseded',
           'docs/adr/202610161350-use-kafka.md: a merged record does not go from Superseded to Accepted; Superseded is final',
         );
@@ -736,9 +707,9 @@ for (const checker of CHECKERS) {
             'Superseded by [Use NATS](./202610161600-use-nats.md)',
           ),
         });
-        checker.run(root, ['--fix']);
+        adr(root, ['--fix']);
         fails(
-          run(checker, root, '--base', base),
+          run(root, '--base', base),
           'docs/adr/202610161350-use-kafka.md: a merged record keeps the record that superseded it (202610161400-use-redis.md)',
         );
       });
@@ -757,8 +728,8 @@ for (const checker of CHECKERS) {
             'Superseded by [Use Redis](./202610161401-use-redis-for-caching.md)',
           ),
         });
-        checker.run(root, ['--fix']);
-        const result = run(checker, root, '--base', base);
+        adr(root, ['--fix']);
+        const result = run(root, '--base', base);
         fails(
           result,
           'docs/adr/202610161300-use-postgres.md: a merged record is never deleted or renamed; supersede it with a new record',
@@ -769,7 +740,7 @@ for (const checker of CHECKERS) {
       it('fails with a readable message when the base is not in the clone', () => {
         const { root } = merged();
         fails(
-          run(checker, root, '--base', 'no-such-ref'),
+          run(root, '--base', 'no-such-ref'),
           '--base no-such-ref: not a commit in this clone; fetch it, or run without --base',
         );
       });
@@ -795,8 +766,8 @@ for (const checker of CHECKERS) {
             ` ${'word '.repeat(780)}`,
           ),
         });
-        checker.run(root, ['--fix']);
-        const result = run(checker, root, '--base', base);
+        adr(root, ['--fix']);
+        const result = run(root, '--base', base);
         passes(result);
         assert.deepEqual(result.warnings, [
           'docs/adr/202610161700-use-zeromq.md: 802 words, over 800; one decision per record, and what the change did goes in the pull request',
@@ -805,7 +776,7 @@ for (const checker of CHECKERS) {
     });
 
     it('prints warnings as GitHub annotations in Actions', () => {
-      const root = repository(checker, {
+      const root = repository({
         'docs/adr/202610161300-use-postgres.md': record(
           'Use Postgres',
           'Superseded by [Use CockroachDB](./202610161400-use-cockroachdb.md)',
@@ -813,17 +784,10 @@ for (const checker of CHECKERS) {
         'docs/adr/202610161400-use-cockroachdb.md': record('Use CockroachDB'),
         'src/db.ts': '// 202610161300-use-postgres\n',
       });
-      const result = spawnSync(
-        checker.name === 'adr.mjs'
-          ? 'node'
-          : (process.env.ADR_TEST_BASH ?? 'bash'),
-        [checker.file],
-        {
-          cwd: root,
-          encoding: 'utf8',
-          env: { ...environment(), GITHUB_ACTIONS: 'true' },
-        },
-      );
+      const result = adr(root, [], {
+        ...environment(),
+        GITHUB_ACTIONS: 'true',
+      });
       assert.equal(result.status, 0, result.stderr);
       assert.match(
         result.stderr,
@@ -833,8 +797,8 @@ for (const checker of CHECKERS) {
   });
 }
 
-describe('both checkers', () => {
-  it('report the same thing, in the same words, on a repository that breaks every rule', () => {
+describe('adr.sh output', () => {
+  it('names every problem in a repository that breaks every rule, in these words', () => {
     const files = {
       'docs/adr/0001-use-postgres.md': record('Use Postgres'),
       'docs/adr/202610161300-use-redis.md': record(
@@ -855,31 +819,49 @@ describe('both checkers', () => {
         '# Agents\n\n[Gone](docs/gone.md) and [fine](README.md). See ADR-4.\n',
       'src/a.ts':
         '// 202610161303-use-mqtt\n// 202610161301-use-kafka\n// 202610169999-use-nothing\n',
+      'docs/adr/202610161304-use-zeromq.md': record('Use ZeroMQ'),
       'pkg/docs/adr/202610161300-x.md': record('X'),
     };
-    const outputs = CHECKERS.map((checker) => {
-      const root = repository(checker, files);
-      const base = commit(root);
-      write(root, {
-        'docs/adr/202610161303-use-mqtt.md': record(
-          'Use MQTT',
-          'Accepted',
-          ' Edited.',
-        ),
-        'docs/adr/202610161300-use-redis.md': null,
-      });
-      const result = run(checker, root, '--base', base);
-      return {
-        status: result.status,
-        stdout: result.stdout,
-        violations: [...result.violations].sort(),
-        warnings: [...result.warnings].sort(),
-      };
+    const root = repository(files);
+    const base = commit(root);
+    write(root, {
+      'docs/adr/202610161303-use-mqtt.md': record(
+        'Use MQTT',
+        'Accepted',
+        ' Edited.',
+      ),
+      'docs/adr/202610161304-use-zeromq.md': null,
     });
-    assert.ok(
-      outputs[0].violations.length > 10,
-      outputs[0].violations.join('\n'),
+    adr(root, ['--fix']);
+    const result = run(root, '--base', base);
+    assert.equal(result.status, 1);
+    assert.equal(
+      result.stdout,
+      'adr: 5 records in 1 folder(s), 13 links, 14 citations\n',
     );
-    assert.deepEqual(outputs[1], outputs[0]);
+    assert.deepEqual([...result.violations].sort(), [
+      'AGENTS.md: links to docs/gone.md, which does not exist',
+      "AGENTS.md:3: cites ADR-4, but records are named by timestamp, not number; cite the record's file name",
+      'docs/adr/0001-use-postgres.md: a record is named YYYYMMDDHHMM-<decision-slug>.md',
+      'docs/adr/202610161300-use-redis.md: has no "## Decision" section',
+      'docs/adr/202610161300-use-redis.md: status "Approved" is not Proposed, Accepted, Rejected, Deprecated, or Superseded by [title](./file.md)',
+      'docs/adr/202610161301-use-kafka.md: superseded by 202610161300-use-redis.md, which is older',
+      "docs/adr/202610161301-use-kafka.md: the heading is still the template's placeholder",
+      'docs/adr/202610161302-use-nats.md: links to ./202610161500-use-zero.md, which does not exist',
+      'docs/adr/202610161302-use-nats.md: links to ./gone.md, which does not exist',
+      'docs/adr/202610161302-use-nats.md: superseded by 202610161500-use-zero.md, which is not a record in this folder',
+      'docs/adr/202610161302-use-nats.md:5: cites 202610161500-use-zero, which is not a record',
+      'docs/adr/202610161303-use-mqtt.md: a merged record changes only in its Status section; write a new record that supersedes it',
+      'docs/adr/202610161303-use-mqtt.md: a merged record does not go from Deprecated to Accepted; from Deprecated it goes to Superseded',
+      'docs/adr/202610161304-use-zeromq.md: a merged record is never deleted or renamed; supersede it with a new record',
+      'docs/adr/README.md: links to ./202610161500-use-zero.md, which does not exist',
+      'docs/adr/README.md:52: cites 202610161500-use-zero, which is not a record',
+      'docs/adr/README.md:52: cites 202610161500-use-zero, which is not a record',
+      'pkg/docs/adr: holds records the check does not read; add it to ADR_DIRS in <script>',
+      'src/a.ts:3: cites 202610169999-use-nothing, which is not a record',
+    ]);
+    assert.deepEqual(result.warnings, [
+      'src/a.ts:2: cites 202610161301-use-kafka, which is superseded by 202610161300-use-redis; cite the record that stands, or drop the reference',
+    ]);
   });
 });

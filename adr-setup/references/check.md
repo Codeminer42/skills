@@ -1,6 +1,6 @@
 # The ADR check
 
-The check runs as `adr.mjs` in a Node project or as `adr.sh` in any other. Both run the same rules and print the same messages.
+The check is `scripts/adr.sh`, one bash script for every kind of project. It needs bash, git and a POSIX awk, nothing else. In a Node project, `package.json` scripts call it.
 
 It exists because a decision log that drifts from the code is worse than none. An agent reads a stale record, or a comment citing one, as current truth: stale docs are prompt injection you wrote yourself. The check makes drift fail CI instead of failing quietly in the next session.
 
@@ -39,12 +39,12 @@ Warnings don't fail the run. In GitHub Actions they print as `::warning` annotat
 
 ## Commands
 
-| Node project | Other projects | Does |
+| Command | `package.json` script (Node projects) | Does |
 |---|---|---|
-| `node scripts/adr.mjs` | `scripts/adr.sh` | check |
-| `node scripts/adr.mjs --base <commit>` | `scripts/adr.sh --base <commit>` | check, plus history against `<commit>` |
-| `node scripts/adr.mjs --fix` | `scripts/adr.sh --fix` | regenerate every index, then check |
-| `node scripts/adr.mjs new "<title>"` | `scripts/adr.sh new "<title>"` | copy the template to a timestamped file, set its title, regenerate the index |
+| `scripts/adr.sh` | `adr:check` | check |
+| `scripts/adr.sh --base <commit>` | | check, plus history against `<commit>` |
+| `scripts/adr.sh --fix` | `adr:index` | regenerate every index, then check |
+| `scripts/adr.sh new "<title>"` | `adr:new` | copy the template to a timestamped file, set its title, regenerate the index |
 
 With more than one folder in `ADR_DIRS`, `new` takes `--dir <folder>`.
 
@@ -61,7 +61,7 @@ Append a job to `.gitlab-ci.yml`, with the user's agreement. It's their main pip
 
 ```yaml
 adr:
-  image: node:lts            # adr.sh: any image with bash and git, e.g. alpine/git plus apk add bash
+  image: buildpack-deps:scm   # any image with bash and git
   variables:
     GIT_DEPTH: 0
   rules:
@@ -70,9 +70,9 @@ adr:
   script:
     - |
       if [ -n "$CI_MERGE_REQUEST_DIFF_BASE_SHA" ]; then
-        node scripts/adr.mjs --base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+        bash scripts/adr.sh --base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"
       else
-        node scripts/adr.mjs
+        bash scripts/adr.sh
       fi
 ```
 
@@ -89,4 +89,13 @@ Run two commands:
 
 `ADR_DIRS`, the list of guide files, the word limit and the skipped paths sit at the top of each script.
 
-A repository gets one of the two scripts, so editing those settings locally is fine. A change to a rule itself belongs upstream in the adr-setup skill, where `node --test adr-setup/tests/adr.test.mjs` runs every case against both scripts.
+Editing those settings in a repository is fine. A change to a rule itself belongs upstream in the adr-setup skill.
+
+The skill's tests install the script into throwaway repositories and run it, the way CI does. Node is the test runner only:
+
+```bash
+node --test adr-setup/tests/adr.test.mjs                        # with the bash on PATH
+ADR_TEST_BASH=/bin/bash node --test adr-setup/tests/adr.test.mjs  # macOS's bash 3.2
+```
+
+Run them on macOS and on Linux before merging a change. BSD awk and mawk differ in small ways, and the script has to work under both.

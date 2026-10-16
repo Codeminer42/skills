@@ -1,6 +1,6 @@
 ---
 name: adr-setup
-description: Set up Architecture Decision Records (ADRs) in a repository. Creates the ADR folder, the template, an index README, a first ADR recording the adoption, and adds a section to AGENTS.md or CLAUDE.md so agents check existing decisions and record new ones while they work. Offers a CI check (a package.json script in Node projects, a bash script otherwise, plus a GitHub Actions workflow) that fails on malformed records, a stale index, dead links in agent instructions, citations of records that don't exist, and edits to merged records. Does nothing if the repo already uses ADRs, except offer the check to a repo this skill set up. Use when asked to set up ADRs, start using architecture decision records, add a decision log, bootstrap docs/adr, or add an ADR check or lint to CI.
+description: Set up Architecture Decision Records (ADRs) in a repository. Creates the ADR folder, the template, an index README, a first ADR recording the adoption, and adds a section to AGENTS.md or CLAUDE.md so agents check existing decisions and record new ones while they work. Offers a CI check (a bash script, wired into package.json scripts in Node projects, plus a GitHub Actions workflow) that fails on malformed records, a stale index, dead links in agent instructions, citations of records that don't exist, and edits to merged records. Does nothing if the repo already uses ADRs, except offer the check to a repo this skill set up. Use when asked to set up ADRs, start using architecture decision records, add a decision log, bootstrap docs/adr, or add an ADR check or lint to CI.
 license: MIT
 metadata:
   author: talyssonoc
@@ -43,7 +43,7 @@ Look for any form of ADRs before creating anything (skip `node_modules`, `vendor
 
 **If anything turns up, stop here. This skill is a no-op on such a repo.** Tell the user the project already uses ADRs, and say where (folder, tool, naming scheme), then finish without creating or changing any file. Don't recommend migrating, renaming, adopting this skill's conventions, or dropping their tooling: the team's existing practice wins.
 
-**One exception: this skill's own layout without the check.** The folder holds a `template.md`, a `README.md` with an `## Index` table, and records named `YYYYMMDDHHMM-<slug>.md`, but no `adr.mjs` or `adr.sh` exists in the repo. An earlier version of this skill set the repo up. Don't redo the setup. Take that folder as `<adr-dir>`, run step 3, and if the user wants the check, go to step 9. Its records are already immutable, so leave the first ADR as it is: the bullet step 5 adds is for a fresh setup only. Run the check before reporting. Records written by hand since the setup may fail it, and 9g covers what to do then.
+**One exception: this skill's own layout without the check.** The folder holds a `template.md`, a `README.md` with an `## Index` table, and records named `YYYYMMDDHHMM-<slug>.md`, but no `adr.sh` exists in the repo. An earlier version of this skill set the repo up. Don't redo the setup. Take that folder as `<adr-dir>`, run step 3, and if the user wants the check, go to step 9. Its records are already immutable, so leave the first ADR as it is: the bullet step 5 adds is for a fresh setup only. Run the check before reporting. Records written by hand since the setup may fail it, and 9g covers what to do then.
 
 Also grep `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and the docs for "ADR" or "decision record". A mention alone, with no records on disk, means the practice was intended but never set up: **don't stop**, continue the setup and carry what the mention says into step 2.
 
@@ -57,10 +57,10 @@ Ask with the agent's structured question tool (`AskUserQuestion` in Claude Code)
 
 Before asking, look at the repo so the question is concrete:
 
-- **Which checker fits.**
-  - A `package.json` at the root makes it a Node project: `adr.mjs`, run through `package.json` scripts.
-  - Anything else gets `adr.sh`, which needs only bash, git and awk.
 - **Which CI runs.** See step 9a.
+- **Whether it's a Node project.** A `package.json` at the root means the check also gets `package.json` scripts (step 9c).
+
+The check is one bash script, `adr.sh`, in every project. It needs only bash, git and awk, which GitHub's runners and every macOS or Linux machine have.
 
 Offer two options, the first marked recommended:
 
@@ -124,8 +124,7 @@ Find the default branch with `git symbolic-ref --short refs/remotes/origin/HEAD`
 For GitHub Actions, read the existing workflows and copy their conventions into the new one:
 
 - how they reference actions: a tag like `actions/checkout@v4`, or a pinned SHA with a version comment;
-- the `runs-on` label (self-hosted runners included);
-- for `adr.mjs`, how they set Node up (`node-version-file: .nvmrc`, a pinned version). With nothing to copy, keep the asset's `lts/*`.
+- the `runs-on` label (self-hosted runners included). A self-hosted runner needs bash and git; say so in the confirmation.
 
 Then confirm with the question tool before writing anything. Show what you found and what you will add, with the workflow file as the preview:
 
@@ -139,40 +138,25 @@ For **GitLab CI**, the job goes into `.gitlab-ci.yml`, their main pipeline file.
 
 #### 9b. Copy the script
 
-Put it in `scripts/`, unless the repo keeps its scripts in `script/` or `bin/` and has no `scripts/`.
+Copy [assets/adr.sh](assets/adr.sh) to `scripts/adr.sh`, unless the repo keeps its scripts in `script/` or `bin/` and has no `scripts/`.
 
-| Project | Copy | To |
-|---|---|---|
-| Node (root `package.json`) | [assets/adr.mjs](assets/adr.mjs) | `scripts/adr.mjs` |
-| anything else | [assets/adr.sh](assets/adr.sh) | `scripts/adr.sh` |
-
-In the copy, set `ADR_DIRS` to `<adr-dir>`:
-
-- `const ADR_DIRS = ['<adr-dir>'];` in `adr.mjs`;
-- `ADR_DIRS=(<adr-dir>)` in `adr.sh`.
-
-Change nothing else. Run `chmod +x` on it.
+In the copy, set `ADR_DIRS=(<adr-dir>)`. Change nothing else. Run `chmod +x` on it.
 
 #### 9c. Add package.json scripts (Node only)
 
 Add these to `scripts` in the root `package.json`, with the path from 9b. Don't overwrite a key that already exists; if one does, tell the user and use a free name.
 
 ```json
-"adr:check": "node scripts/adr.mjs",
-"adr:index": "node scripts/adr.mjs --fix",
-"adr:new": "node scripts/adr.mjs new"
+"adr:check": "bash scripts/adr.sh",
+"adr:index": "bash scripts/adr.sh --fix",
+"adr:new": "bash scripts/adr.sh new"
 ```
 
 Edit the JSON as text and keep its formatting.
 
 #### 9d. Add the workflow (GitHub Actions)
 
-Copy the matching asset to `.github/workflows/adr.yml`:
-
-- [assets/github-workflow-node.yml](assets/github-workflow-node.yml) for `adr.mjs`;
-- [assets/github-workflow-bash.yml](assets/github-workflow-bash.yml) for `adr.sh`.
-
-Replace `<default-branch>` and `<script>` (the path from 9b), and apply the conventions from 9a. CI calls the script directly, not through a package manager, so the job needs no install step.
+Copy [assets/github-workflow.yml](assets/github-workflow.yml) to `.github/workflows/adr.yml`. Replace `<default-branch>` and `<script>` (the path from 9b), and apply the conventions from 9a. CI calls the script directly, not through a package manager, so the job needs no Node or install step, even in a Node project.
 
 Leave the pull-request step at `--base HEAD^1` and `fetch-depth: 2`. The `pull_request` checkout is a merge commit, and its first parent is the base branch tip.
 
@@ -213,7 +197,7 @@ List every file created or changed and anything skipped and why. If the check wa
 - The index is regenerated from the files, not hand-merged. When two branches both add rows, resolve the conflict by regenerating.
 - The check reads every `YYYYMMDDHHMM-<slug>` token in the repo as a citation, and every "ADR" followed by a number as a numbered one. Write examples in docs with placeholders (`YYYYMMDDHHMM-<decision-slug>`), as the assets do, or the check will fail them.
 - On a checkout of the branch head instead of a merge commit, `--base` must be the merge base, not the target branch tip. Otherwise records merged after the branch was cut look deleted. See [references/check.md](references/check.md#picking---base).
-- `adr.mjs` and `adr.sh` must report the same thing in the same words. A change to one goes into the other, and `node --test adr-setup/tests/adr.test.mjs` runs every case against both.
+- `adr.sh` must stay portable: bash 3.2 (macOS), POSIX awk (BSD awk on macOS, mawk on Ubuntu), no gawk or GNU-only flags. After changing it, run `node --test adr-setup/tests/adr.test.mjs`, once with `ADR_TEST_BASH=/bin/bash` on macOS and once on Linux. Node is only the test runner.
 
 ## Further reading
 

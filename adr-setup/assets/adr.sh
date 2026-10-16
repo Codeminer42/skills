@@ -2,8 +2,8 @@
 # Checks this repository's Architecture Decision Records: each record's name,
 # heading, sections and status, the index in its folder's README, the relative
 # links in every file agents read, and every place code or docs cite a record.
-# Installed by the adr-setup skill. adr.mjs is the same check in Node; keep the
-# two in step. Needs bash, git and a POSIX awk; runs on bash 3.2 (macOS) too.
+# Installed by the adr-setup skill, whose tests cover every rule here. Needs
+# bash, git and a POSIX awk; runs on bash 3.2 (macOS) and mawk (Ubuntu) too.
 #
 #   scripts/adr.sh                  check
 #   scripts/adr.sh --base <commit>  also check merged records against <commit>
@@ -204,7 +204,8 @@ function read_lines(path,   line, count) {
 }
 function starts_row(line) { sub(/^[ \t]+/, "", line); return substr(line, 1, 1) == "|" }
 # Finds the index table in L[1..n]: sets T_heading, T_end, T_start, T_stop
-# (0 when there is none), the way adr.mjs does.
+# (0 when there is none). The table is the first run of "|" lines between
+# "## Index" and the next heading.
 function index_table(n,   i) {
   T_heading = 0; T_end = n + 1; T_start = 0; T_stop = 0
   for (i = 1; i <= n; i++) if (trim(L[i]) == "## Index") { T_heading = i; break }
