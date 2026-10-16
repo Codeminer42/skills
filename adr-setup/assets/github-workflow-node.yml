@@ -1,0 +1,39 @@
+name: ADR
+
+on:
+  push:
+    branches:
+      - <default-branch>
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# An edit to a pull request's title or body can't change the records, so it
+# gets its own group and doesn't cancel a real run. A new base branch can.
+concurrency:
+  group: adr-${{ github.event.pull_request.number || github.sha }}${{ github.event.action == 'edited' && !github.event.changes.base && '-edit' || '' }}
+  cancel-in-progress: true
+
+jobs:
+  adr:
+    if: github.event.action != 'edited' || github.event.changes.base
+    runs-on: ubuntu-latest
+    steps:
+      # Depth 2 fetches the merge commit and the base branch tip it was made from.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+
+      - if: github.event_name != 'pull_request'
+        run: node <script>
+
+      # The checkout is the merge commit; its first parent is the base branch.
+      - if: github.event_name == 'pull_request'
+        run: node <script> --base HEAD^1

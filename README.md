@@ -6,7 +6,7 @@ A collection of [Agent Skills](https://agentskills.io) by [Codeminer42](https://
 
 | Skill | Description |
 |-------|-------------|
-| [adr-setup](./adr-setup/) | Set up Architecture Decision Records in a repository: ADR folder, template, index README, a first ADR, and agent instructions so agents check existing decisions and record new ones. |
+| [adr-setup](./adr-setup/) | Set up Architecture Decision Records in a repository: ADR folder, template, index README, a first ADR, and agent instructions so agents check existing decisions and record new ones. Optionally adds a CI check (package.json script or bash, plus a GitHub Actions workflow) that fails on a stale index, dead links in agent instructions, citations of records that don't exist, and edits to merged records. |
 | [review-that-runs](./review-that-runs/) | Review a pull request by running it: detects the forge and stack, isolated worktree, the project's own CI gates, the app driven in Chrome for frontend changes, every finding verified and written to a local notes file, worktree and containers removed afterwards. Posts nothing to the code host. |
 | [sherlock](./sherlock/) | Autonomous investigation loop for finding and fixing performance issues, flaky tests, memory leaks, and reliability problems. |
 | [privacy-assessment-rails](./privacy-assessment-rails/) | Assess a Rails app's full codebase for compliance with privacy laws, like GDPR and LGPD. |
