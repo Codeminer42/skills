@@ -1,6 +1,6 @@
 ---
 name: adr-setup
-description: Set up Architecture Decision Records (ADRs) in a repository. Creates the ADR folder, the template, an index README, a first ADR recording the adoption, and adds a section to AGENTS.md or CLAUDE.md so agents check existing decisions and record new ones while they work. Offers a CI check (a bash script, wired into package.json scripts in Node projects, plus a GitHub Actions workflow) that fails on malformed records, a stale index, dead links in agent instructions, citations of records that don't exist, and edits to merged records. Does nothing if the repo already uses ADRs, except offer the check to a repo this skill set up. Use when asked to set up ADRs, start using architecture decision records, add a decision log, bootstrap docs/adr, or add an ADR check or lint to CI.
+description: Set up Architecture Decision Records (ADRs) in a repository. Creates the ADR folder, the template, an index README, a first ADR recording the adoption, and adds a section to AGENTS.md or CLAUDE.md so agents check existing decisions and record new ones while they work. Offers a check (a bash script, also wired into package.json scripts in Node projects) and writes the job for the project's own CI, so CI fails on malformed records, a stale index, dead links in agent instructions, citations of records that don't exist, and edits to merged records. Does nothing if the repo already uses ADRs, except offer the check to a repo this skill set up. Use when asked to set up ADRs, start using architecture decision records, add a decision log, bootstrap docs/adr, or add an ADR check or lint to CI.
 license: MIT
 metadata:
   author: talyssonoc
@@ -43,7 +43,7 @@ Look for any form of ADRs before creating anything (skip `node_modules`, `vendor
 
 **If anything turns up, stop here. This skill is a no-op on such a repo.** Tell the user the project already uses ADRs, and say where (folder, tool, naming scheme), then finish without creating or changing any file. Don't recommend migrating, renaming, adopting this skill's conventions, or dropping their tooling: the team's existing practice wins.
 
-**One exception: this skill's own layout without the check.** The folder holds a `template.md`, a `README.md` with an `## Index` table, and records named `YYYYMMDDHHMM-<slug>.md`, but no `adr.sh` exists in the repo. An earlier version of this skill set the repo up. Don't redo the setup. Take that folder as `<adr-dir>`, run step 3, and if the user wants the check, go to step 9. Its records are already immutable, so leave the first ADR as it is: the bullet step 5 adds is for a fresh setup only. Run the check before reporting. Records written by hand since the setup may fail it, and 9g covers what to do then.
+**One exception: this skill's own layout without the check.** The folder holds a `template.md`, a `README.md` with an `## Index` table, and records named `YYYYMMDDHHMM-<slug>.md`, but no `adr.sh` exists in the repo. An earlier version of this skill set the repo up. Don't redo the setup. Take that folder as `<adr-dir>`, run step 3, and if the user wants the check, go to step 9. Its records are already immutable, so leave the first ADR as it is: the bullet step 5 adds is for a fresh setup only. Run the check before reporting. Records written by hand since the setup may fail it, and 9e covers what to do then.
 
 Also grep `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and the docs for "ADR" or "decision record". A mention alone, with no records on disk, means the practice was intended but never set up: **don't stop**, continue the setup and carry what the mention says into step 2.
 
@@ -57,14 +57,14 @@ Ask with the agent's structured question tool (`AskUserQuestion` in Claude Code)
 
 Before asking, look at the repo so the question is concrete:
 
-- **Which CI runs.** See step 9a.
-- **Whether it's a Node project.** A `package.json` at the root means the check also gets `package.json` scripts (step 9c).
+- **Which CI runs.** See the table in step 9f.
+- **Whether it's a Node project.** A `package.json` at the root means the check also gets `package.json` scripts (step 9b).
 
-The check is one bash script, `adr.sh`, in every project. It needs only bash, git and awk, which GitHub's runners and every macOS or Linux machine have.
+The check is one bash script, `adr.sh`, in every project. It needs only bash, git and awk, which CI runners and every macOS or Linux machine have.
 
 Offer two options, the first marked recommended:
 
-- **Add the check (Recommended).** Name the script and the CI file it would add, for example "`scripts/adr.sh` plus `.github/workflows/adr.yml`".
+- **Add the check (Recommended).** Name the script and where it would run in *this* project's CI, for example "`scripts/adr.sh`, run as a step in your `lint` job in `.github/workflows/ci.yml`". With no CI found, say the check will run locally and that you'll ask which CI to wire it into.
 - **Skip it.**
 
 Say in one line what the check does: it fails CI on malformed records, a stale index, dead links in agent instructions, citations of records that don't exist, and edits to merged records.
@@ -77,14 +77,14 @@ Copy [assets/template.md](assets/template.md) to `<adr-dir>/template.md` unchang
 
 Get the timestamp with `date +%Y%m%d%H%M` and copy [assets/first-adr.md](assets/first-adr.md) to `<adr-dir>/<timestamp>-record-architecture-decisions-with-adrs.md`. Replace `<adr-dir>` inside it. Status is Accepted: setting the log up *is* the decision being taken.
 
-If the user chose the check, add one more bullet to its Decision list: "`<check>` enforces these rules in CI on every pull request." Take `<check>` from step 9f.
+If step 9f ends with the check running in CI, come back and add one more bullet to its Decision list: "`<check>` enforces these rules in CI on every pull request." Take `<check>` from step 9d. If CI doesn't run it, leave the bullet out. Nothing is committed yet, so this edit is still allowed.
 
 ### 6. Write the index README
 
 Copy [assets/README.md](assets/README.md) to `<adr-dir>/README.md`.
 
 - **Without the check:** fill the index table by hand. Add one row per ADR in the folder, oldest first, excluding `README.md` and `template.md`. The date column comes from the file name's timestamp (`YYYY-MM-DD`).
-- **With the check:** leave the table empty. Step 9g generates it.
+- **With the check:** leave the table empty. Step 9e generates it.
 
 ### 7. Add the agent-instructions section
 
@@ -108,43 +108,15 @@ If the user skipped the check, go to step 10.
 
 ### 9. Install the check
 
-#### 9a. Confirm how CI is set up
-
-Find what runs CI:
-
-| Found | CI |
-|---|---|
-| `.github/workflows/*.yml` or `*.yaml` | GitHub Actions |
-| `.gitlab-ci.yml` | GitLab CI |
-| `.circleci/`, `bitbucket-pipelines.yml`, `azure-pipelines.yml`, `Jenkinsfile`, `.buildkite/` | other |
-| nothing | none; `git remote get-url origin` on `github.com` means GitHub Actions is available |
-
-Find the default branch with `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`), or `gh repo view --json defaultBranchRef`. Fall back to `main` and say so.
-
-For GitHub Actions, read the existing workflows and copy their conventions into the new one:
-
-- how they reference actions: a tag like `actions/checkout@v4`, or a pinned SHA with a version comment;
-- the `runs-on` label (self-hosted runners included). A self-hosted runner needs bash and git; say so in the confirmation.
-
-Then confirm with the question tool before writing anything. Show what you found and what you will add, with the workflow file as the preview:
-
-- the CI system and the file you'll create (`.github/workflows/adr.yml`; if that file exists, ask for another name);
-- the triggers: pull requests, and pushes to `<default-branch>`;
-- the script path and the commands CI runs.
-
-Offer: "Add it as shown (Recommended)", "Script only, I'll wire CI myself", and a free-text option to change something.
-
-For **GitLab CI**, the job goes into `.gitlab-ci.yml`, their main pipeline file. Show the job from [references/check.md](references/check.md#gitlab-ci) and ask before appending it. For **other** CI systems, don't edit their pipeline config. Install the script, and give the user the two commands to wire (see [references/check.md](references/check.md#any-other-ci)).
-
-#### 9b. Copy the script
+#### 9a. Copy the script
 
 Copy [assets/adr.sh](assets/adr.sh) to `scripts/adr.sh`, unless the repo keeps its scripts in `script/` or `bin/` and has no `scripts/`.
 
 In the copy, set `ADR_DIRS=(<adr-dir>)`. Change nothing else. Run `chmod +x` on it.
 
-#### 9c. Add package.json scripts (Node only)
+#### 9b. Add package.json scripts (Node only)
 
-Add these to `scripts` in the root `package.json`, with the path from 9b. Don't overwrite a key that already exists; if one does, tell the user and use a free name.
+Add these to `scripts` in the root `package.json`, with the path from 9a. Don't overwrite a key that already exists; if one does, tell the user and use a free name.
 
 ```json
 "adr:check": "bash scripts/adr.sh",
@@ -154,13 +126,7 @@ Add these to `scripts` in the root `package.json`, with the path from 9b. Don't 
 
 Edit the JSON as text and keep its formatting.
 
-#### 9d. Add the workflow (GitHub Actions)
-
-Copy [assets/github-workflow.yml](assets/github-workflow.yml) to `.github/workflows/adr.yml`. Replace `<default-branch>` and `<script>` (the path from 9b), and apply the conventions from 9a. CI calls the script directly, not through a package manager, so the job needs no Node or install step, even in a Node project.
-
-Leave the pull-request step at `--base HEAD^1` and `fetch-depth: 2`. The `pull_request` checkout is a merge commit, and its first parent is the base branch tip.
-
-#### 9e. Point the index at the script
+#### 9c. Point the index at the script
 
 In `<adr-dir>/README.md`, replace the blockquote under "Regenerate this table…" with:
 
@@ -168,7 +134,7 @@ In `<adr-dir>/README.md`, replace the blockquote under "Regenerate this table…
 > Generated by <index>. Don't edit it by hand: change the records, then run it.
 ```
 
-#### 9f. Extend the agent instructions
+#### 9d. Extend the agent instructions
 
 Append [assets/agent-instructions-check.md](assets/agent-instructions-check.md) right after the section from step 7. Replace the placeholders:
 
@@ -178,15 +144,55 @@ Append [assets/agent-instructions-check.md](assets/agent-instructions-check.md) 
 | `<new>` | `` `npm run adr:new -- "<decision title>"` `` / `` `pnpm adr:new "<decision title>"` `` / … | `` `scripts/adr.sh new "<decision title>"` `` |
 | `<index>` | `` `npm run adr:index` `` / `` `pnpm adr:index` `` / … | `` `scripts/adr.sh --fix` `` |
 
-#### 9g. Run it
+#### 9e. Run it
 
 Run the index command once to fill the table, then the check. It must pass on everything this skill wrote.
 
-If it fails on files that were there before, don't fix them silently and don't loosen the script. Typical causes are a dead link in `README.md` or `AGENTS.md`, or an "ADR 3" mention left from an earlier attempt. List each violation for the user and say CI will stay red until they're fixed. Offer to fix them.
+If it fails on files that were there before, don't fix them silently and don't loosen the script. Typical causes are a dead link in `README.md` or `AGENTS.md`, or an "ADR 3" mention left from an earlier attempt. List each violation for the user and say CI will go red on them once 9f wires the check in. Offer to fix them.
+
+#### 9f. Wire it into the project's CI
+
+The skill ships no CI file. Write the job for this project, in its CI system and its own style.
+
+**Find what runs CI:**
+
+| Found | CI |
+|---|---|
+| `.github/workflows/*.yml` or `*.yaml` | GitHub Actions |
+| `.gitlab-ci.yml` | GitLab CI |
+| `bitbucket-pipelines.yml` | Bitbucket Pipelines |
+| `.circleci/config.yml`, `Jenkinsfile`, `.buildkite/`, `azure-pipelines.yml` | that system |
+| nothing | none |
+
+With no CI, don't pick one: ask which CI the project uses, or whether the check stays local for now.
+
+Find the default branch with `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`), or `gh repo view --json defaultBranchRef`. Fall back to `main` and say so.
+
+**Read the pipeline before drafting.**
+
+- **Placement.** Where do its lint-type checks live? If there's a `lint` or `checks` job, add a step there. If the project keeps one file per check, add a file next to them.
+- **Conventions to copy:** how actions or orbs are referenced (tags, pinned SHAs), runner labels or images, triggers and branch filters, job and step naming, concurrency or cancel settings, required-check names if branch protection lists them.
+- **Watch for:** `paths:` filters that would skip the check, depth-1 checkouts, and images without bash.
+
+**Draft the job** to the requirements in [references/check.md](references/check.md#wiring-it-into-ci):
+
+- run on every pull request and on pushes to `<default-branch>`;
+- plain check on the default branch, `--base` on pull requests, with the base and the fetch depth that fit this CI;
+- bash and git only, calling `bash <script>` directly, with no runtime setup or install.
+
+**Confirm with the question tool before writing.** Use the exact change as the preview: the new file, or the diff of the file you're editing.
+
+Offer:
+
+- "Add it as shown (Recommended)";
+- "Leave CI to me" (then give the user the two commands and the base to use);
+- a free-text option to change something.
+
+**Write it, then validate.** Run the project's CI linter if one is installed (`actionlint`, `circleci config validate`). If none is, say so in the report.
 
 ### 10. Report
 
-List every file created or changed and anything skipped and why. If the check was installed, give the commands to run it locally and what CI now enforces. [references/check.md](references/check.md) has the full list, if the user asks. Do not commit.
+List every file created or changed and anything skipped and why. If the check was installed, give the commands to run it locally, where it runs in CI, and what CI now enforces. [references/check.md](references/check.md) has the full list, if the user asks. Do not commit.
 
 ## Gotchas
 

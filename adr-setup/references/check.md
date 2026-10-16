@@ -48,42 +48,32 @@ Warnings don't fail the run. In GitHub Actions they print as `::warning` annotat
 
 With more than one folder in `ADR_DIRS`, `new` takes `--dir <folder>`.
 
-## Picking `--base`
+## Wiring it into CI
+
+The skill ships no CI file. The agent writes the job for the project's own CI, in that project's style. Whatever the system, the job has to do these things:
+
+- **Run on every pull or merge request, and on every push to the default branch.** No path filters: a code-only change can cite a record that doesn't exist.
+- **Run the plain check on the default branch**, and `--base <commit>` on a pull request (see below).
+- **Have the history `--base` reads.** A depth-1 clone doesn't have the base commit.
+- **Need only bash and git.** No language runtime and no dependency install, even in a Node project: call `bash scripts/adr.sh` directly, not the `package.json` script.
+
+### Picking `--base`
 
 `--base` is the commit the pull request merges into, as the checked-out tree sees it. Get this wrong and records merged after the branch was cut look deleted.
 
-- **GitHub Actions, `pull_request` event:** the checkout is a merge commit, so `HEAD^1` is the base branch tip. `fetch-depth: 2` is enough.
-- **A checkout of the branch head** (GitLab merge request pipelines, most other CIs): use the merge base, not the target tip.
+- **Checkout is a merge commit** (GitHub Actions on `pull_request`, GitLab merged-results pipelines): pass `HEAD^1`, the target branch tip. A fetch depth of 2 is enough.
+- **Checkout is the branch head** (GitLab merge request pipelines, most other CIs): pass the merge base, not the target tip. That needs enough history for the merge base to exist.
 
-## GitLab CI
+### Per system
 
-Append a job to `.gitlab-ci.yml`, with the user's agreement. It's their main pipeline file.
+| CI | Pull request base | History | Notes |
+|---|---|---|---|
+| GitHub Actions | `HEAD^1` on `pull_request` | `fetch-depth: 2` on `actions/checkout` | `ubuntu-*` runners have bash, git and mawk. If the workflow listens to `pull_request: edited`, only a base change matters to this check. |
+| GitLab CI | `$CI_MERGE_REQUEST_DIFF_BASE_SHA` in merge request pipelines | `GIT_DEPTH: 0`, or deep enough for the merge base | The image needs bash and git; Alpine images lack bash. |
+| Bitbucket Pipelines | `git merge-base origin/$BITBUCKET_PR_DESTINATION_BRANCH HEAD` | `clone: depth: full`, then fetch the destination branch | |
+| CircleCI, Jenkins, Buildkite, Azure | `git merge-base origin/<default-branch> HEAD` after fetching the target branch | whatever the fetch above needs | Check how the pipeline tells a pull request from a branch build before relying on it. |
 
-```yaml
-adr:
-  image: buildpack-deps:scm   # any image with bash and git
-  variables:
-    GIT_DEPTH: 0
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-  script:
-    - |
-      if [ -n "$CI_MERGE_REQUEST_DIFF_BASE_SHA" ]; then
-        bash scripts/adr.sh --base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"
-      else
-        bash scripts/adr.sh
-      fi
-```
-
-`CI_MERGE_REQUEST_DIFF_BASE_SHA` is the merge base, so it needs the history: hence `GIT_DEPTH: 0`.
-
-## Any other CI
-
-Run two commands:
-
-- on the default branch, the plain check;
-- on a pull request, the check with `--base "$(git merge-base origin/<default-branch> HEAD)"`, after fetching enough history for the merge base to exist.
+Before writing anything, read the project's pipeline. Put the check where its other lint-type checks run, and copy its conventions: action refs or pinned SHAs, runner labels or images, triggers, job names, concurrency settings.
 
 ## Changing the rules
 
