@@ -1,0 +1,129 @@
+# Behavioural regression check for skills that ship an evals/ suite.
+#
+# Add the `run-evals` label to a PR to run it. For every skill the PR touches that has
+# evals/ on the base branch, the suite runs twice, against the base version of the skill
+# and against the PR's, with the same pinned models, and the job fails when the PR's
+# version scores worse. The label is removed when the job ends; re-add it to run again.
+#
+# Trust model: this runs on pull_request_target so fork PRs get the API key, which means
+# PR content must not run outside the eval sandbox. The workflow, the eval cases, their
+# scaffold scripts and graders all come from the BASE branch. Only the skill's own files
+# come from the PR, and they are read by the sandboxed agent, never executed by the job.
+# A maintainer still reads the PR before labelling it: the skill text steers an agent
+# that holds Bash inside the sandbox.
+
+name: skill-evals
+
+on:
+  pull_request_target:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: skill-evals-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  AGENT_MODEL: claude-sonnet-5-5
+  JUDGE_MODEL: claude-sonnet-5-5
+  RUNS: 3
+  MAX_COST_PER_ARM: 40
+
+jobs:
+  evals:
+    if: github.event.label.name == 'run-evals'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Check out the base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Claude Code and the sandbox's dependencies
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q bubblewrap socat
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+
+      - name: Find the changed skills that have evals
+        id: skills
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          skills=$(gh pr view "$PR" --json files --jq '.files[].path' \
+            | cut -d/ -f1 | sort -u \
+            | while read -r dir; do [ -d "$dir/evals" ] && echo "$dir"; done | xargs)
+          echo "Skills to evaluate: ${skills:-none}"
+          echo "list=$skills" >> "$GITHUB_OUTPUT"
+
+      - name: Build the base and PR versions of each skill
+        if: steps.skills.outputs.list != ''
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch -q origin "pull/$PR/head"
+          for skill in ${{ steps.skills.outputs.list }}; do
+            mkdir -p "arms/base" "arms/head"
+            cp -R "$skill" "arms/base/$skill"
+            git archive "$HEAD_SHA" "$skill" | tar -x -C arms/head
+            # The suite under test is always the base branch's.
+            rm -rf "arms/head/$skill/evals"
+            cp -R "$skill/evals" "arms/head/$skill/evals"
+          done
+
+      - name: Run the suites
+        if: steps.skills.outputs.list != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          mkdir -p eval-results
+          for skill in ${{ steps.skills.outputs.list }}; do
+            for arm in base head; do
+              claude plugin eval "arms/$arm/$skill" \
+                --scaffold --trust-plugin \
+                --allow-tools Bash Write Edit \
+                --ablation none --runs "$RUNS" --concurrency 4 \
+                --model "$AGENT_MODEL" --judge-model "$JUDGE_MODEL" \
+                --max-cost-usd "$MAX_COST_PER_ARM" --threshold 0 --no-publish \
+                --json "eval-results/$skill-$arm.json" \
+                --report "eval-results/$skill-$arm.html" || [ $? -eq 2 ]
+            done
+          done
+
+      - name: Compare
+        if: steps.skills.outputs.list != ''
+        run: |
+          status=0
+          for skill in ${{ steps.skills.outputs.list }}; do
+            echo "## $skill" >> "$GITHUB_STEP_SUMMARY"
+            node .github/scripts/compare-evals.mjs \
+              "eval-results/$skill-base.json" "eval-results/$skill-head.json" \
+              >> "$GITHUB_STEP_SUMMARY" || status=1
+          done
+          exit $status
+
+      - name: Keep the results
+        if: always() && steps.skills.outputs.list != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: |
+            eval-results/
+            arms/*/*/evals/results/
+
+      - name: Remove the label so a new push needs a fresh look
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr edit ${{ github.event.pull_request.number }} --remove-label run-evals
