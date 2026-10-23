@@ -30,13 +30,13 @@ An agent doesn't know where a system's trust boundaries are. It treats a databas
   - **To verify:** inferred from reading the code. Needs a check against a running environment.
   - **Mitigated:** fixed. The entry says by what.
   - **Accepted:** the team lives with it. The entry cites the ADR that says why.
-- **Where the fix lives:** **Here** (this repository can fix it alone) or **Outside** (another system, or hosting and cloud configuration this repository can't see, owns the fix; this repository can only contain it). Pick the project's own name for "here", such as "Portal" or "API", and use it everywhere the template says `<Here>`. A threat can be both: "Outside, contained by the Portal".
+- **Where the fix lives:** **Here** (this repository can fix it alone) or **Outside** (another system, or hosting and cloud configuration this repository can't see, owns the fix; this repository can only contain it). Pick the project's own name for "here", such as "Portal" or "API", and use it everywhere the template says `<Here>`. A threat can be both. Write "Outside, contained by the Portal" when another system owns the fix and this one can only limit the damage, and "Portal and Outside" when both have to change.
 - **Every threat cites evidence**: the files and functions involved. A threat with no citation is a guess and doesn't go in.
 - **Every control says where it stops.** "The Host allowlist defends against DNS rebinding. It doesn't stop a client that can reach the port, because that client sets Host freely." This honesty is what makes the model useful.
 
 ## Flow
 
-Track progress with these steps, in order. Steps 3 and 4 feed each other: the mapping raises premise questions, and the premise decides what matters in the mapping. Agree what you can first, map, then bring the new questions back to the user before step 6.
+Track progress with these steps, in order. Steps 3 and 4 feed each other: the mapping raises premise questions, and the premise decides what matters in the mapping. Agree what you can first, map, then bring the new questions back to the user before step 6. Mapping raises many questions. Bring back only the ones that would change a boundary, an actor or a severity. Turn the rest into **Verify** lines on the threats they belong to.
 
 ### 1. Detect an existing model
 
@@ -91,7 +91,10 @@ Read the code to find every place where data crosses from one trust level to ano
 - **outbound integrations:** payment, devices, email, storage, third-party APIs, and how each one authenticates;
 - **files and media:** uploads, signed links, who can read what;
 - **secrets and configuration:** where they come from, and who else can read them;
-- **build and deploy:** CI, package registries, action pinning, deploy targets.
+- **build and deploy:** CI, package registries, action pinning, deploy targets;
+- **logging and audit:** what is recorded for security-relevant actions, and who can change it.
+
+Use four to six subagents, combining small areas (secrets with build and deploy, logging with data stores). The areas overlap, so the same finding will come back from several of them; that is expected, and step 6 merges them.
 
 Give every subagent the same brief: [references/subagent-brief.md](references/subagent-brief.md), with the premise and its area filled in. It fixes the shape of what comes back. Without it, each subagent numbers its own threats and proposes its own severities, and reconciling six such reports costs more than the mapping.
 
@@ -125,21 +128,27 @@ For every threat you keep:
 - **Mitigated** only with the evidence of the fix.
 - **Never decide Accepted yourself.** If an existing ADR already accepts the risk, check its assumptions. When they still hold, the threat is **Accepted** and cites that ADR. When one broke (a control it relied on was never built, a later ADR contradicts it), the threat is **Open**, and the entry says which assumption broke.
 
-**Severity.** Rate the harm, then how easy it is to reach:
+**Severity.** High means "the team would stop a release for this". A first model rarely has more than five or six. Rate the harm, then how easy it is to reach:
 
-| Harm to the asset                                                                         | Reached by anyone, or any signed-in user | Needs a specific role, a neighbour or a network position | Needs a compromised account or several unlikely steps |
-| ----------------------------------------------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------- |
-| Physical harm, money moved, sensitive personal data, one tenant reaching another, takeover | High                                     | High                                                     | Medium                                                |
-| Data of one tenant, an account, the audit trail, availability of a core flow             | Medium                                   | Medium                                                   | Low                                                   |
-| Hygiene: missing hardening, noise, cost                                                   | Low                                      | Low                                                      | Low                                                   |
+| Harm to the asset                                                                          | Anyone, or any signed-in user | A specific role, a neighbour, or a network position | A compromised account, or several unlikely steps |
+| ------------------------------------------------------------------------------------------ | ----------------------------- | --------------------------------------------------- | ------------------------------------------------ |
+| Physical harm, money moved, sensitive personal data, one tenant reaching another, takeover | High                          | High if the code shows it; Medium if To verify      | Medium                                           |
+| Data of one tenant, an account, the audit trail, availability of a core flow               | Medium                        | Medium                                              | Low                                              |
+| Hygiene: missing hardening, noise, cost                                                    | Low                           | Low                                                 | Low                                              |
 
-Rank a **To verify** threat by the worst case its Verify line would confirm, and say so in the entry ("High if the port is reachable").
+Harm with no attacker (a double charge when a dependency is slow, data lost on a retry) is rated like the middle column.
 
-**Merge by chain.** Merge findings when **the same actor** completes the harm through them. "Staff can sign in to the customer app" and "staff bypass permission checks" are one threat: together they are the harm, and splitting them hides the chain. When a **different actor** feeds the chain (a seeded account that becomes staff, an attacker who squats a staff email), keep it separate and cross-reference the IDs.
+Rank a **To verify** threat by what the evidence makes likely, not by its worst case. Write the worst case in the entry ("High if the port is reachable from outside"), so the team can raise it when the check confirms it.
 
-**Aim for a model people read.** A first model of a real product usually holds 10 to 20 threats. If you have many more, you are listing findings, not threats: merge findings that share a root cause or a fix, and fold small hygiene items into one Low entry per area ("Account security baseline", "Build hardening"). Every finding stays in the evidence bullets of the threat it belongs to.
+**Merge.** Apply these in order. The first one that applies decides.
 
-**Number them.** Order by severity. Within a severity, put the higher-ranked asset first, then Open before To verify. Then number. Numbers are permanent from now on.
+1. **Same root cause, or same fix:** one threat, whatever the actors. An email change with no proof is one threat, even if both a session thief and an operator squatting a staff address use it.
+2. **Same actor completes the harm through them:** one threat. "Staff can sign in to the customer app" and "staff bypass permission checks" are one: together they are the harm, and splitting them hides the chain.
+3. **Otherwise**, keep them separate and cross-reference the IDs when one feeds the other.
+
+**Aim for a model people read.** A first model of a real product usually holds 10 to 20 threats. If you have many more, you are listing findings, not threats: merge findings that share a root cause or a fix, and fold small hygiene items into one Low entry per area ("Account security baseline", "Build hardening"). Every finding stays in the evidence bullets of the threat it belongs to. Still too many? Fold denial-of-service and hygiene findings first, then Medium threats that share an asset and a boundary.
+
+**Number them.** Order by severity. Within a severity, put Open before To verify, then order by the highest-ranked asset the threat names. Then number. Numbers are permanent from now on.
 
 ### 7. List the controls in place
 

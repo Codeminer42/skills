@@ -40,7 +40,7 @@ Ordered by severity. Each entry names its boundary, STRIDE class and asset.
 
 ## T1 — <one sentence that states the harm>
 
-**<High|Medium|Low> · <Open|To verify|Mitigated|Accepted> · <Here|Outside>** · <B?> · <STRIDE class> · <A?, A?>
+**<High|Medium|Low> · <Open|To verify|Mitigated|Accepted> · <Here | Outside | Outside, contained by Here | Here and Outside>** · <B?> · <STRIDE class> · <A?, A?>
 
 - Evidence, with the files and functions involved.
 - **Mitigation options:** what would fix or contain it.

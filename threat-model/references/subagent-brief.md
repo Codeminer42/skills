@@ -18,6 +18,8 @@ You are mapping one area of a repository for a threat model. Read code and confi
 
 - Every claim cites a file and a function, or a file and a line for configuration. No citation, no claim.
 - Don't number threats and don't rate severity. The coordinator does both, once, for the whole model.
+- Stay inside your area. When you see something that belongs to another area, note it in one line under **Seen outside my area**, and don't investigate it.
+- Spend about 40 tool calls. Breadth over depth: a candidate with one solid citation is enough.
 - A table or channel that a neighbour writes is input, not truth.
 - A check the UI makes but the server doesn't is not a control.
 - Don't copy secrets, logins, internal hostnames, or the names of the client's partners and customers. Cite where they live instead.
@@ -44,4 +46,8 @@ Each defence that works, with its citation, and where it stops.
 
 ## Questions for the premise
 
-What the code raised that only people can answer.
+What the code raised that only people can answer. Only questions that would change a boundary, an actor or how bad a candidate is.
+
+## Seen outside my area
+
+One line each.
