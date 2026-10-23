@@ -43,7 +43,7 @@ The skill also:
 | **Who acts**  | Who can use it, by role or permission, and what checks it. Say when a permission is declared but not checked. |
 | **Is not**    | What it doesn't do, and which capability does, by id.                                           |
 | **Lives in**  | Where its code is, across every app.                                                            |
-| **Decisions** | The ADRs that bind it, by ID, each with a few words.                                            |
+| **Decisions** | The ADRs in effect that a change here must respect, by ID, each with a few words. The most binding ten at most; the ADR index holds the rest. |
 | **State**     | Built, partial or planned, and the gaps found while mapping it.                                 |
 
 - **A capability spans apps.** The map follows the domain, not the folders. One capability's entry lists its backend, frontend and admin code together.
@@ -63,6 +63,8 @@ Look before creating anything (skip `node_modules`, `vendor` and other dependenc
 - files: `docs/capability-map.md`, `*capabilit*`, `CONTEXT.md`, `CONTEXT-MAP.md`, `docs/domain*`, `UBIQUITOUS_LANGUAGE.md`, `docs/glossary*`;
 - a glossary or domain section in `AGENTS.md`, `CLAUDE.md`, `README.md` or `PRODUCT.md`;
 - per-module domain docs (`*/knowledge/spec.md`, `*/README.md` describing a bounded context).
+
+**What counts as a map:** a markdown file whose entries carry the map's fields (`**One line:**`, `**Is not:**` or similar). A checker script, an ADR or an agent-instructions section that mentions a map with no such file means the map was intended or lost: continue, carry what they say into the draft, and don't install a second checker in step 9.
 
 **A capability map already there:** don't replace it. Tell the user where it is and stop, unless they asked to update it. Then follow [Updating a map](#updating-a-map).
 
@@ -98,7 +100,7 @@ From the language and a first look at the code (routes, top-level modules, model
 - the **contexts**, three to six;
 - the **capabilities** in each, with an id and a one-line description.
 
-Show the list to the user and let them correct it before mapping. A wrong cut here costs every later step. A capability is a part of the business someone could own, not a folder: "membership" and "access-control" can live in the same module and still be two capabilities.
+Show the list to the user and let them correct it before mapping. If nobody can answer (a run without a user), decide, and put each cut you are unsure of in the questions. A wrong cut here costs every later step. A capability is a part of the business someone could own, not a folder: "membership" and "access-control" can live in the same module and still be two capabilities.
 
 ### 5. Map each capability
 
@@ -106,22 +108,30 @@ When the agent can run subagents, give each one a context, and the brief in [ref
 
 For every entry:
 
-- **Language** uses the client's word. If the code uses another, the client's word goes in the entry, and the pair goes under _Where the words still disagree_.
+- **Language** uses the client's word. If the code uses another, the client's word goes in the entry, and the pair goes under _Where the words still disagree_. If the project glossary already settled a word and a client document uses another, keep the glossary's word, which the team agreed, and ask the client.
 - **Owns** names the tables or stores, and the rules on them: what must always hold, who can change what, the states and their transitions.
 - **Who acts** checks the server. A permission checked only in the UI protects nothing; say so. A permission declared and seeded but checked nowhere goes under _Declared, not built_.
 - **Is not** names the neighbouring capabilities by id. Write it from what the code does, then mark every _Is not_ you are unsure of for the questions list.
 - **Decisions** cites ADRs that are in effect. A superseded ADR doesn't go in.
 - **State** says what is missing, as found. Don't fix it.
 
-**Check what comes back.** Subagents return confident claims, and some are wrong. Before writing an entry, open the cited code yourself for every _Owns_ rule and every _Who acts_ claim.
+**Check what comes back.** Subagents return confident claims, and some are wrong. Before writing the map, open the cited code yourself for:
+
+- every claim that a check is missing: a permission checked only in the UI, a key checked nowhere, a rule the server doesn't enforce;
+- every gap in _State_;
+- one _Owns_ rule per capability, picked at random.
+
+Check every path in _Lives in_ and every ADR ID in _Decisions_ with a script: they are cheap to check and embarrassing to get wrong.
 
 ### 6. Write the map
 
-Copy [assets/capability-map.md](assets/capability-map.md) to `docs/capability-map.md` (or `doc/` if the repo has `doc/` and no `docs/`) and fill it in. Keep each field on one line: the check reads them line by line.
+Copy [assets/capability-map.md](assets/capability-map.md) to `docs/capability-map.md` (or `doc/` if the repo has `doc/` and no `docs/`) and fill it in. Keep each field on one line: the check reads them line by line. Subagents tend to return bulleted fields anyway; fold them back into one line.
+
+Keep each line short enough to review in a diff, about 300 characters. In _Lives in_, name folders, and files only where a capability shares a folder. In _Contracts_, group routes by prefix.
 
 Write the closing sections from what the mapping found. They are often the most useful part of the page. They show the team where the domain and the code have drifted apart.
 
-If the project has a glossary, every glossary term must appear in some _Language_ line or under _Declared, not built_. A term no capability speaks is a sign the glossary or the map is wrong. Put it in the questions.
+If the project has a glossary, every glossary term must appear in some _Language_ line or under _Declared, not built_. A term that names an app or a surface ("Operator portal", "Admin Portal") goes in the _Language_ line of the capability that owns sign-in to it. Any other term no capability speaks is a sign the glossary or the map is wrong. Put it in the questions.
 
 ### 7. Write the questions
 
@@ -152,7 +162,9 @@ The section holds a table of every capability with its context and one line, bet
 
 ### 9. Offer the check
 
-Ask with the question tool whether to add the check. Offer:
+If the repository already has a checker for the map (step 1), don't add this one. Report the existing one and stop this step.
+
+Otherwise, ask with the question tool whether to add the check. Without a user to ask, add it and say so. Offer:
 
 - **Add the check (Recommended).** Name where it would go and run in this project, such as "`scripts/capability-map.sh`, run as a step in your `lint` job".
 - **Skip it.**
@@ -165,7 +177,7 @@ If the user wants it:
 2. Set `MAP` and `AGENT_FILE`. If the project has a glossary in the `- **Term** — definition` format, set `GLOSSARY_FILE` and `GLOSSARY_HEADING`. If its glossary has another format, leave `GLOSSARY_FILE` empty and say so in the report. If you changed the fields, change `FIELDS`.
 3. In a Node project, add `"capability-map:check": "bash scripts/capability-map.sh"` and `"capability-map:fix": "bash scripts/capability-map.sh --fix"` to `package.json`, without overwriting existing keys.
 4. Run it with `--fix`, then without. It must pass on what this skill wrote. A glossary term it flags goes to the questions, not into a made-up _Language_ line.
-5. Wire it into the project's CI the way `adr-setup` does: find the CI system, read the pipeline, add a step where its lint-type checks run, in its own style, and confirm the exact change with the user before writing it. It needs only bash and awk, so it needs no setup step.
+5. Wire it into the project's CI. Find the CI system (`.github/workflows/`, `.gitlab-ci.yml`, `bitbucket-pipelines.yml`, `.circleci/config.yml` and so on). Read the pipeline and add one step that runs `bash scripts/capability-map.sh` where its lint-type checks run, in its own style. Watch for `paths:` filters that skip docs-only changes: the map is a doc, so the check must run on them. Show the user the exact change and confirm it before writing. The check needs only bash and awk, so it needs no setup step.
 
 ### 10. Report
 
@@ -196,6 +208,7 @@ Do not commit.
 - **Overloaded words are the costly ones.** One word for two things ("admin" as a panel and as a separate app, "transaction" as a sale and a database transaction) misleads more than two words for one thing. List every one under _Where the words still disagree_.
 - **Keep each field on one line.** The check reads fields line by line, and a field that wraps to a second line loses its continuation.
 - **Don't put client confidential data in the map.** It is about the domain, not the data: no customer names, credentials, internal hostnames or partner names that the client hasn't cleared. "An external manufacturer" says enough.
+- **The glossary check proves a term appears, not that it's used right.** It matches substrings, ignoring case, so a short term like "Pod" or "Role" passes almost anywhere. Read the _Language_ lines yourself.
 - **`capability-map.sh` must stay portable:** bash 3.2 (macOS), POSIX awk (BSD awk on macOS, mawk on Ubuntu), no gawk or GNU-only flags. After changing it, run `node --test capability-map/tests/capability-map.test.mjs`, once with `CAPABILITY_MAP_TEST_BASH=/bin/bash` on macOS and once on Linux. Node is only the test runner.
 - **CI checks the shape, not the truth.** An entry can go stale while CI stays green. Reviewers keep it true, which is why the agent-instructions section asks every boundary-moving change to update its entry.
 
