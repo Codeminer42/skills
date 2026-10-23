@@ -1,0 +1,3 @@
+## Threat Model
+
+`<path>` lists what the system protects, who from, the trust boundaries (`B1`–`B<n>`) and every known threat by a stable ID. **A change that crosses a boundary names the threats it touches by ID in the PR description**, and a fix moves its threat to Mitigated in the same PR. Living with a threat takes an ADR that the threat's entry cites. A new external system, inbound route or shared table adds or extends a boundary in the same PR. Never weaken a control listed under "Controls in place" without saying so in the PR. <Neighbours> write the same data this system reads: treat their rows as input, not truth.
